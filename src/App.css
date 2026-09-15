@@ -1,0 +1,76 @@
+.app-root {
+  position: relative;
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  background: #000;
+  /* Finger drags turn the view (see lookInput) instead of scrolling or zooming the page. */
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* One screen half (or the whole screen when not split). Overlays size text with cqw/cqh against it. */
+.app-root .eye {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  container-type: size;
+}
+
+.app-root.is-split .eye + .eye {
+  border-left: 2px solid #000;
+}
+
+.app-root canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  touch-action: none;
+}
+
+/* "Board the train" prompt, pulsing in sync with the glowing 3D door. */
+.boarding-cue {
+  margin-top: clamp(48px, 11cqh, 110px);
+  align-self: flex-start;
+  padding: 8px 20px;
+  border: 2px solid #ffc93a;
+  border-radius: 999px;
+  background: rgba(20, 16, 8, 0.55);
+  color: #ffe29a;
+  font: 600 clamp(12px, 1.7cqw, 18px) "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0.22em;
+  white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  animation: boarding-cue-pulse 1.25s ease-in-out infinite;
+}
+
+.boarding-cue-arrow {
+  display: inline-block;
+  margin-right: 0.6em;
+  animation: boarding-cue-bob 1.25s ease-in-out infinite;
+}
+
+@keyframes boarding-cue-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(255, 201, 58, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 26px rgba(255, 201, 58, 0.85);
+  }
+}
+
+@keyframes boarding-cue-bob {
+  0%,
+  100% {
+    transform: translateY(-2px);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
