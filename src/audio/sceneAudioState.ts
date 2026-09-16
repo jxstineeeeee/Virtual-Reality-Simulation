@@ -23,8 +23,9 @@ export const POSITION_FN: Partial<Record<SceneId, (local: number) => number>> = 
 };
 
 export const SCENE_ERA: Partial<Record<SceneId, AudioEra>> = {
-  preview: "idle",
-  boarding: "idle",
+  // The steam loco is standing on screen in both, simmering — "idle" would silence it entirely.
+  preview: "steam",
+  boarding: "steam",
   interior: "steam",
   departure: "steam",
   journey: "steam",

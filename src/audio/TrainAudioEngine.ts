@@ -34,13 +34,13 @@ interface HornVoice {
 
 const HORN: Record<AudioEra, HornVoice> = {
   // A three-note chime whistle, bright and airy, with a long tail.
-  steam: { freqs: [523, 659, 784], type: "triangle", seconds: 1.9, peak: 0.15, cutoff: 3200, breath: 0.07 },
+  steam: { freqs: [523, 659, 784], type: "triangle", seconds: 1.9, peak: 0.26, cutoff: 3200, breath: 0.12 },
   // Low, reedy, two-tone — the classic North American diesel air horn.
-  diesel: { freqs: [175, 233, 349], type: "sawtooth", seconds: 1.6, peak: 0.12, cutoff: 1100, breath: 0.02 },
+  diesel: { freqs: [175, 233, 349], type: "sawtooth", seconds: 1.6, peak: 0.24, cutoff: 1100, breath: 0.04 },
   // Electric/modern units use a short electronic two-tone rather than a chord.
-  electric: { freqs: [392, 523], type: "square", seconds: 0.9, peak: 0.09, cutoff: 1800, breath: 0 },
-  modern: { freqs: [587, 880], type: "sine", seconds: 0.8, peak: 0.1, cutoff: 2800, breath: 0 },
-  idle: { freqs: [523, 659, 784], type: "triangle", seconds: 1.9, peak: 0.15, cutoff: 3200, breath: 0.07 },
+  electric: { freqs: [392, 523], type: "square", seconds: 0.9, peak: 0.2, cutoff: 1800, breath: 0 },
+  modern: { freqs: [587, 880], type: "sine", seconds: 0.8, peak: 0.22, cutoff: 2800, breath: 0 },
+  idle: { freqs: [523, 659, 784], type: "triangle", seconds: 1.9, peak: 0.26, cutoff: 3200, breath: 0.12 },
 };
 
 /**
@@ -74,7 +74,7 @@ export class TrainAudioEngine {
   private chuffDistance = 0;
   private muted = false;
   private playing = true;
-  private unmutedVolume = 0.55;
+  private unmutedVolume = 0.8;
 
   /** Must be called from a user-gesture handler (browser autoplay policy). No-op once started. */
   start() {
@@ -85,9 +85,19 @@ export class TrainAudioEngine {
     const ctx = new AudioContext();
     this.ctx = ctx;
 
+    // A limiter on the way out: horn + crowd + clacks + chuff can all land together, and without
+    // this their sum clips into distortion on the busier platform scenes.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -10;
+    limiter.knee.value = 6;
+    limiter.ratio.value = 4;
+    limiter.attack.value = 0.004;
+    limiter.release.value = 0.2;
+    limiter.connect(ctx.destination);
+
     const master = ctx.createGain();
     master.gain.value = this.masterTarget();
-    master.connect(ctx.destination);
+    master.connect(limiter);
     this.master = master;
 
     // Continuous engine tone: two oscillators through a lowpass; pitch/timbre/level all driven per-frame.
@@ -229,19 +239,22 @@ export class TrainAudioEngine {
     this.engineOsc2?.frequency.setTargetAtTime(pitch * 1.5, t, 0.4);
     if (this.engineOsc) this.engineOsc.type = era === "electric" || era === "modern" ? "sine" : "sawtooth";
     this.engineFilter.frequency.setTargetAtTime(200 + speedN * 900, t, 0.5);
-    const engineLevel = (moving ? 0.14 + speedN * 0.18 : era === "idle" ? 0 : 0.04) * (interior ? 0.7 : 1);
+    const engineLevel = (moving ? 0.2 + speedN * 0.24 : era === "idle" ? 0 : 0.1) * (interior ? 0.7 : 1);
     this.engineGain.gain.setTargetAtTime(engineLevel, t, 0.3);
 
     this.noiseFilter.frequency.setTargetAtTime(era === "steam" ? 1600 : 900, t, 0.5);
     // Inside a tunnel the rail noise has nowhere to escape, so the bed swells with the roar.
-    const noiseLevel = moving ? (0.05 + speedN * 0.12) * (1 + tunnel * 0.8) : 0;
+    // A standing steam loco still simmers on the safety valve — without this the platform scenes,
+    // where nothing is moving at all, come out silent.
+    const standingHiss = era === "steam" ? 0.05 : 0;
+    const noiseLevel = moving ? (0.08 + speedN * 0.16) * (1 + tunnel * 0.8) : standingHiss;
     this.noiseGain.gain.setTargetAtTime(noiseLevel, t, 0.25);
 
     // Closed carriage windows muffle the world outside; a tunnel closes it down further still.
     const outsideCutoff = (interior ? 900 : 18000) * (1 - tunnel * 0.6);
     this.outsideFilter?.frequency.setTargetAtTime(Math.max(outsideCutoff, 240), t, 0.35);
-    this.crowdGain?.gain.setTargetAtTime(crowd * 0.07, t, 0.6);
-    this.tunnelGain?.gain.setTargetAtTime(tunnel * speedN * 0.22, t, 0.3);
+    this.crowdGain?.gain.setTargetAtTime(crowd * 0.2, t, 0.6);
+    this.tunnelGain?.gain.setTargetAtTime(tunnel * speedN * 0.3, t, 0.3);
 
     // Wheel clack: a short double-click roughly every rail-joint length of travel; rate rises with speed.
     this.clackDistance += speed / 60;
@@ -315,7 +328,7 @@ export class TrainAudioEngine {
     osc.frequency.value = 120 + Math.random() * 40;
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(0.12 + intensity * 0.1, t + 0.005);
+    gain.gain.linearRampToValueAtTime(0.18 + intensity * 0.14, t + 0.005);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
     osc.connect(gain);
     gain.connect(this.master);
@@ -329,19 +342,19 @@ export class TrainAudioEngine {
     const filter = this.makeFilter("bandpass", 900 + intensity * 500, 0.8);
     const t = this.ctx.currentTime;
     filter.frequency.exponentialRampToValueAtTime(320, t + 0.22);
-    this.noiseBurst(0.26, (0.1 + intensity * 0.08) * (interior ? 0.45 : 1), filter, this.master);
+    this.noiseBurst(0.26, (0.16 + intensity * 0.12) * (interior ? 0.45 : 1), filter, this.master);
   }
 
   private playCrackle() {
     if (!this.ctx || !this.outsideFilter) return;
-    this.noiseBurst(0.06, 0.03, this.makeFilter("highpass", 4000), this.outsideFilter);
+    this.noiseBurst(0.06, 0.06, this.makeFilter("highpass", 4000), this.outsideFilter);
   }
 
   /** One indistinct voice out of the platform crowd. */
   private playMurmur() {
     if (!this.ctx || !this.outsideFilter) return;
     const filter = this.makeFilter("bandpass", 320 + Math.random() * 500, 3.5);
-    this.noiseBurst(0.2 + Math.random() * 0.25, 0.03, filter, this.outsideFilter, "swell");
+    this.noiseBurst(0.2 + Math.random() * 0.25, 0.07, filter, this.outsideFilter, "swell");
   }
 
   private playBrakeSqueal() {
@@ -354,7 +367,7 @@ export class TrainAudioEngine {
     osc.frequency.exponentialRampToValueAtTime(1400, t + 0.3);
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(0.05, t + 0.05);
+    gain.gain.linearRampToValueAtTime(0.1, t + 0.05);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
     osc.connect(gain);
     gain.connect(this.master);
@@ -365,13 +378,13 @@ export class TrainAudioEngine {
   /** The long sigh of air as the brakes let go once the train is finally at a stand. */
   playBrakeRelease() {
     if (!this.audible || !this.master) return;
-    this.noiseBurst(1.4, 0.09, this.makeFilter("bandpass", 1400, 0.7), this.master);
+    this.noiseBurst(1.4, 0.16, this.makeFilter("bandpass", 1400, 0.7), this.master);
   }
 
   /** One-shot pneumatic door hiss (filtered noise burst) — call on door-open/close transitions. */
   playDoorHiss() {
     if (!this.audible || !this.master) return;
-    this.noiseBurst(0.5, 0.2, this.makeFilter("highpass", 2000), this.master);
+    this.noiseBurst(0.5, 0.28, this.makeFilter("highpass", 2000), this.master);
   }
 
   /** The heavy wooden/metal thunk of a carriage door shutting. */
@@ -385,13 +398,13 @@ export class TrainAudioEngine {
     osc.frequency.exponentialRampToValueAtTime(60, t + 0.12);
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(0.22, t + 0.008);
+    gain.gain.linearRampToValueAtTime(0.3, t + 0.008);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
     osc.connect(gain);
     gain.connect(this.master);
     osc.start(t);
     osc.stop(t + 0.31);
-    this.noiseBurst(0.12, 0.1, this.makeFilter("lowpass", 900), this.master);
+    this.noiseBurst(0.12, 0.16, this.makeFilter("lowpass", 900), this.master);
   }
 
   /** Slack running out through the couplers as the train takes up the strain — a rolling series of clanks. */
@@ -407,7 +420,7 @@ export class TrainAudioEngine {
       osc.frequency.exponentialRampToValueAtTime(70, t + 0.1);
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.linearRampToValueAtTime(0.14 - i * 0.02, t + 0.005);
+      gain.gain.linearRampToValueAtTime(0.22 - i * 0.03, t + 0.005);
       gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
       osc.connect(gain);
       gain.connect(this.master);
@@ -469,7 +482,7 @@ export class TrainAudioEngine {
       osc.frequency.setValueAtTime(2350, t);
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.linearRampToValueAtTime(0.08, t + 0.02);
+      gain.gain.linearRampToValueAtTime(0.16, t + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
       // The trill of the pea rattling inside the whistle.
       const trill = ctx.createOscillator();
@@ -503,7 +516,7 @@ export class TrainAudioEngine {
       partial.frequency.value = freq * 2.01; // a touch sharp, so it rings like a bell rather than a tone
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.linearRampToValueAtTime(0.07, t + 0.015);
+      gain.gain.linearRampToValueAtTime(0.16, t + 0.015);
       gain.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
       osc.connect(gain);
       partial.connect(gain);
@@ -519,7 +532,7 @@ export class TrainAudioEngine {
   playFootstep(hollow = false) {
     if (!this.audible || !this.master) return;
     const filter = this.makeFilter("lowpass", hollow ? 420 : 900, 1.4);
-    this.noiseBurst(hollow ? 0.16 : 0.1, hollow ? 0.07 : 0.05, filter, this.master);
+    this.noiseBurst(hollow ? 0.16 : 0.1, hollow ? 0.12 : 0.09, filter, this.master);
   }
 
   /** Loads and loops a sourced ambience clip (station/wind) at low volume, if present. No-op on any failure. */
