@@ -27,7 +27,7 @@ const EXTERIOR_SWITCH = 22;
 export const FIRST_ARRIVAL_EXIT_CUT = EXTERIOR_SWITCH;
 const DOOR = TRAIN_DOORS.steam;
 const EXIT_HIGHLIGHT_END = 29;
-const TRAIN_DOOR_CLOSE = 38;
+export const TRAIN_DOOR_CLOSE = 38;
 
 export function firstArrivalDistance(local: number): number {
   return decelDistance(local, DECEL_SECONDS, JOURNEY_CRUISE_SPEED);

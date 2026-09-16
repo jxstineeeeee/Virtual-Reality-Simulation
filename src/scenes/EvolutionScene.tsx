@@ -491,3 +491,29 @@ export function evolutionShot(local: number): CameraShotResult {
   const settle = Math.min((local - currentRideStart(local)) / 1.5, 1);
   return { pos: [SEAT_POS[0], SEAT_POS[1], SEAT_POS[2] * settle], look: SEAT_LOOK };
 }
+
+/** The audible moments inside one handoff, lifted straight off the same `beats()` the visuals use so
+ * horns and announcements can't drift out of sync with the trains they belong to. */
+export interface EvolutionAudioBeat {
+  /** The generation pulling out, and the one rolling in behind it. */
+  depart: DoorTrain;
+  arrive: DoorTrain;
+  start: number;
+  departStart: number;
+  arriveEnd: number;
+}
+
+export const EVOLUTION_AUDIO_BEATS: EvolutionAudioBeat[] = HANDOFFS.map((h) => {
+  const b = beats(h);
+  return { depart: h.depart, arrive: h.arrive, start: h.start, departStart: b.departStart, arriveEnd: b.arriveEnd };
+});
+
+/** True while the viewer is standing on the platform between two generations rather than riding. */
+export function evolutionOnPlatform(local: number): boolean {
+  return inAnyHandoff(local);
+}
+
+/** True while the viewer is on their feet — crossing the platform, or walking the aisle to the doors. */
+export function evolutionOnFoot(local: number): boolean {
+  return inAnyHandoff(local) || upcomingExit(local, RIDE_EXIT_WALK_SECONDS) !== undefined;
+}

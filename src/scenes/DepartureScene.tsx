@@ -9,8 +9,8 @@ import { sampleShots, type Shot, type CameraShotResult } from "../components/Cam
 import { timelineStore } from "../state/timelineStore";
 import { getSceneLocal, clamp01, lerp, smootherstep } from "../timeline/timeline";
 
-const DOOR_CLOSE_END = 3;
-const ACCEL_START = 5;
+export const DOOR_CLOSE_END = 3;
+export const ACCEL_START = 5;
 const ACCEL_END = 30;
 const TRAVEL = 8;
 
@@ -52,7 +52,7 @@ const SHOTS: Shot[] = [
   { t: 30, pos: [0.4, 1.35, 0.2], look: [0, 1.3, -3] }, // face forward again as the station falls away
 ];
 
-const JERK_ANCHOR = 4.1;
+export const JERK_ANCHOR = 4.1;
 
 export function departureShot(local: number): CameraShotResult {
   const base = sampleShots(local, SHOTS);

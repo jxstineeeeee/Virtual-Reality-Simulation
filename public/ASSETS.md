@@ -25,7 +25,13 @@ domain, or Creative Commons with compatible permissions.
   scenery + real glass material. [`src/assets/WindowVideo.tsx`](../src/assets/WindowVideo.tsx) is
   ready to display a real clip the moment one is dropped into `public/video/window/` — see its
   usage note in `JourneyScene.tsx`.
-- **Audio**: rather than stock loops, train sound (engine, wheel-clack, brake, door) is synthesized in
-  real time from the actual per-scene speed/era state — see
-  [`src/audio/TrainAudioEngine.ts`](../src/audio/TrainAudioEngine.ts). `TrainAudioEngine.loadAmbience()`
-  can layer in a sourced CC0 ambience clip (station/wind) if one is added under `public/audio/ambience/`.
+- **Audio**: rather than stock loops, every sound in the cinematic is synthesized in real time from
+  Web Audio primitives — see [`src/audio/TrainAudioEngine.ts`](../src/audio/TrainAudioEngine.ts), so
+  there is no third-party recording here to license. The continuous layer (engine tone, wheel clack,
+  steam chuff, rail noise, brake squeal) is driven every frame from each scene's *actual* speed/era
+  state, and the event layer — era-specific whistles and horns, station PA chimes, the guard's pea
+  whistle, the coupler snatch, door latch/hiss/thunk, footsteps, tunnel roar and platform crowd
+  murmur — is hung on the scenes' own timing constants in
+  [`src/audio/sceneAudioCues.ts`](../src/audio/sceneAudioCues.ts).
+  `TrainAudioEngine.loadAmbience()` can still layer in a sourced CC0 ambience clip (station/wind) if
+  one is added under `public/audio/ambience/`; nothing currently calls it.
