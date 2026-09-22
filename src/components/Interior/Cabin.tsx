@@ -2,7 +2,8 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
-import { fabricRoughnessTexture, floorRoughnessTexture } from "../../materials/presets";
+import { fabricNormalTexture, fabricRoughnessTexture, floorRoughnessTexture } from "../../materials/presets";
+import { useDetailMap } from "../../materials/useDetailMap";
 import { createTextTexture } from "../../materials/proceduralTextures";
 import { CabinPassengers, type CabinPassengerConfig } from "../People/Crowds";
 
@@ -63,22 +64,24 @@ export const DIESEL_THEME: CabinTheme = {
 const WINDOW_Y = [0.95, 1.75] as const; // sill / head height
 const HALF_W = 1.05;
 const CEIL_Y = 2.15;
+/** Upholstery weave. Seen from half a metre away for minutes at a time, so it has to be felt. */
+const WEAVE_RELIEF = new THREE.Vector2(0.6, 0.6);
 
-function SeatPair({ z, side, theme, fabricMap }: { z: number; side: 1 | -1; theme: CabinTheme; fabricMap: THREE.Texture }) {
+function SeatPair({ z, side, theme, fabricMap, fabricNormalMap }: { z: number; side: 1 | -1; theme: CabinTheme; fabricMap: THREE.Texture; fabricNormalMap: THREE.Texture }) {
   const x = side * 0.58;
   return (
     <group position={[x, 0, z]}>
       {/* Cushion — rounded so it reads as padded fabric rather than a foam block */}
       <RoundedBox args={[0.85, 0.14, 0.85]} radius={0.05} smoothness={2} position={[0, 0.42, 0]} castShadow>
-        <meshStandardMaterial color={theme.seat} roughnessMap={fabricMap} roughness={0.95} />
+        <meshStandardMaterial color={theme.seat} roughnessMap={fabricMap} normalMap={fabricNormalMap} normalScale={WEAVE_RELIEF} roughness={0.95} />
       </RoundedBox>
       {/* Backrest */}
       <RoundedBox args={[0.85, 0.7, 0.14]} radius={0.06} smoothness={2} position={[0, 0.75, side * 0.36]} castShadow>
-        <meshStandardMaterial color={theme.seat} roughnessMap={fabricMap} roughness={0.95} />
+        <meshStandardMaterial color={theme.seat} roughnessMap={fabricMap} normalMap={fabricNormalMap} normalScale={WEAVE_RELIEF} roughness={0.95} />
       </RoundedBox>
       {/* Headrest */}
       <RoundedBox args={[0.62, 0.28, 0.12]} radius={0.05} smoothness={2} position={[0, 1.18, side * 0.34]} castShadow>
-        <meshStandardMaterial color={theme.seatAccent} roughnessMap={fabricMap} roughness={0.9} />
+        <meshStandardMaterial color={theme.seatAccent} roughnessMap={fabricMap} normalMap={fabricNormalMap} normalScale={WEAVE_RELIEF} roughness={0.9} />
       </RoundedBox>
       <mesh position={[0, 0.48, side * -0.02]}>
         <boxGeometry args={[0.85, 0.08, 0.08]} />
@@ -238,19 +241,10 @@ export function Cabin({
   const lightZs: number[] = [];
   for (let z = -halfLen + 1; z < halfLen - 0.5; z += 1.8) lightZs.push(z);
 
-  const fabricMap = useMemo(() => {
-    const tex = fabricRoughnessTexture().clone();
-    tex.repeat.set(2, 2);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
+  const fabricMap = useDetailMap(fabricRoughnessTexture, 2, 2);
+  const fabricNormalMap = useDetailMap(fabricNormalTexture, 2, 2);
 
-  const floorMap = useMemo(() => {
-    const tex = floorRoughnessTexture().clone();
-    tex.repeat.set(1.5, length / 2);
-    tex.needsUpdate = true;
-    return tex;
-  }, [length]);
+  const floorMap = useDetailMap(floorRoughnessTexture, 1.5, length / 2);
 
   useFrame(() => {
     const open = doorOpenRef?.current ?? 0;
@@ -358,8 +352,8 @@ export function Cabin({
 
       {seatRows.map((z, i) => (
         <group key={z}>
-          <SeatPair z={z} side={-1} theme={theme} fabricMap={fabricMap} />
-          {i % 2 === 0 && <SeatPair z={z} side={1} theme={theme} fabricMap={fabricMap} />}
+          <SeatPair z={z} side={-1} theme={theme} fabricMap={fabricMap} fabricNormalMap={fabricNormalMap} />
+          {i % 2 === 0 && <SeatPair z={z} side={1} theme={theme} fabricMap={fabricMap} fabricNormalMap={fabricNormalMap} />}
         </group>
       ))}
 

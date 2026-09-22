@@ -1,7 +1,8 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { woodGrainTexture } from "../../materials/presets";
+import { coalNormalTexture, woodGrainTexture, woodNormalTexture } from "../../materials/presets";
+import { useDetailMap } from "../../materials/useDetailMap";
 import { WAGGONWAY_HALF_GAUGE } from "../Environment/Waggonway";
 import { Lantern } from "../Environment/MineWorkings";
 
@@ -10,6 +11,9 @@ const AXLE_Z = [-0.72, 0.72];
 const WHEEL_RADIUS = 0.34;
 /** Top of the wagon floor — the load sits on this and the camera reads the heap against it. */
 const BED_Y = 0.62;
+/** Coal breaks along sharp faces and is faintly lustrous; sawn oak just has grain. */
+const COAL_RELIEF = new THREE.Vector2(1.4, 1.4);
+const PLANK_RELIEF = new THREE.Vector2(0.9, 0.9);
 
 interface ChaldronWagonProps {
   /** Metres travelled, used to roll the wheels the exact distance the wagon has actually moved. */
@@ -25,12 +29,9 @@ export function ChaldronWagon({ distanceRef, load = 1, lamp = false }: ChaldronW
   const wheelRefs = useRef<(THREE.Group | null)[]>([]);
   const bodyRef = useRef<THREE.Group>(null);
 
-  const plankMap = useMemo(() => {
-    const tex = woodGrainTexture().clone();
-    tex.repeat.set(2, 1);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
+  const plankMap = useDetailMap(woodGrainTexture, 2, 1);
+  const plankNormalMap = useDetailMap(woodNormalTexture, 2, 1);
+  const coalNormalMap = useDetailMap(coalNormalTexture, 1, 1);
 
   // Coal is a heap of broken lumps, not a smooth mound — a fixed scatter beats a random one here
   // because the same wagon is on screen for the whole scene and must not reshuffle between frames.
@@ -80,13 +81,13 @@ export function ChaldronWagon({ distanceRef, load = 1, lamp = false }: ChaldronW
         {([-1, 1] as const).map((side) => (
           <mesh key={side} position={[side * 0.64, BED_Y + 0.28, 0]} rotation={[0, 0, side * -0.1]} castShadow receiveShadow>
             <boxGeometry args={[0.07, 0.62, 2.24]} />
-            <meshStandardMaterial color="#4e3a24" map={plankMap} roughness={0.92} />
+            <meshStandardMaterial color="#4e3a24" map={plankMap} normalMap={plankNormalMap} normalScale={PLANK_RELIEF} roughness={0.92} />
           </mesh>
         ))}
         {([-1, 1] as const).map((end) => (
           <mesh key={end} position={[0, BED_Y + 0.28, end * 1.12]} rotation={[end * 0.1, 0, 0]} castShadow receiveShadow>
             <boxGeometry args={[1.32, 0.62, 0.07]} />
-            <meshStandardMaterial color="#4e3a24" map={plankMap} roughness={0.92} />
+            <meshStandardMaterial color="#4e3a24" map={plankMap} normalMap={plankNormalMap} normalScale={PLANK_RELIEF} roughness={0.92} />
           </mesh>
         ))}
         <mesh position={[0, BED_Y, 0]} receiveShadow>
@@ -107,7 +108,13 @@ export function ChaldronWagon({ distanceRef, load = 1, lamp = false }: ChaldronW
           lumps.map((lump, i) => (
             <mesh key={i} position={[lump.pos[0], BED_Y + 0.08 + lump.pos[1] * load, lump.pos[2]]} rotation={lump.rot} scale={lump.scale} castShadow>
               <dodecahedronGeometry args={[1, 0]} />
-              <meshStandardMaterial color={i % 3 === 0 ? "#16161a" : "#0f1013"} roughness={0.62} metalness={0.12} />
+              <meshStandardMaterial
+                color={i % 3 === 0 ? "#16161a" : "#0f1013"}
+                normalMap={coalNormalMap}
+                normalScale={COAL_RELIEF}
+                roughness={0.58}
+                metalness={0.16}
+              />
             </mesh>
           ))}
 

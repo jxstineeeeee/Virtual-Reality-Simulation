@@ -1,4 +1,11 @@
 import { ScrollField } from "./ScrollField";
+import { groundColorTexture, groundNormalTexture, groundRoughnessTexture } from "../../materials/presets";
+import { useDetailMap } from "../../materials/useDetailMap";
+
+import * as THREE from "three";
+
+/** Open terrain seen mostly at a grazing angle, so the relief reads long rather than deep. */
+const TERRAIN_RELIEF = new THREE.Vector2(0.8, 0.8);
 
 interface BiomeProps {
   distanceRef: React.MutableRefObject<number>;
@@ -14,12 +21,19 @@ function sides(side: "both" | "left" | "right", near: number, far: number): [num
   return ranges;
 }
 
-/** A tinted ground strip that scrolls with the world so the terrain color reads as "moving" too. */
+/**
+ * The terrain the ride scenes run over. This single plane fills the bottom half of the frame for
+ * most of the film, so leaving it as an untextured fill was the largest flat surface in the project
+ * — it now carries the same grain, roughness break-up and relief as the trackside ground.
+ */
 export function GroundStrip({ color, width = 200 }: { color: string; width?: number }) {
+  const map = useDetailMap(groundColorTexture, 26, 52);
+  const roughMap = useDetailMap(groundRoughnessTexture, 26, 52);
+  const normalMap = useDetailMap(groundNormalTexture, 26, 52);
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
       <planeGeometry args={[width, 400]} />
-      <meshStandardMaterial color={color} roughness={0.95} />
+      <meshStandardMaterial color={color} map={map} roughnessMap={roughMap} normalMap={normalMap} normalScale={TERRAIN_RELIEF} roughness={0.95} />
     </mesh>
   );
 }

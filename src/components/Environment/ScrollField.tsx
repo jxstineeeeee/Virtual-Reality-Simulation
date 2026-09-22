@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -8,6 +8,8 @@ interface Instance {
   y: number;
   scale: number;
   rot: number;
+  /** 0..1 seed for this instance's colour offset. */
+  tint: number;
 }
 
 interface ScrollFieldProps {
@@ -24,6 +26,12 @@ interface ScrollFieldProps {
   yBase?: number;
   scaleRange?: [number, number];
   castShadow?: boolean;
+  /**
+   * Per-instance brightness spread (0 = every instance identical). A field of trees or buildings in
+   * one exact shade is the clearest sign that a scene was instanced rather than grown, and this is
+   * the cheapest possible fix: one colour attribute, no extra draw calls.
+   */
+  colorJitter?: number;
   children: React.ReactNode;
 }
 
@@ -41,6 +49,7 @@ export function ScrollField({
   yBase = 0,
   scaleRange = [0.8, 1.3],
   castShadow = true,
+  colorJitter = 0.16,
   children,
 }: ScrollFieldProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -57,11 +66,27 @@ export function ScrollField({
         y: yBase * scale,
         scale,
         rot: Math.random() * Math.PI * 2,
+        tint: Math.random(),
       });
     }
     return arr;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [count]);
+
+  // Tint each instance once. Warmer/cooler as well as lighter/darker, because real foliage and real
+  // brickwork vary in hue with age and aspect, not just in brightness.
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh || colorJitter <= 0) return;
+    const shade = new THREE.Color();
+    for (let i = 0; i < instances.length; i++) {
+      const n = instances[i].tint;
+      const v = 1 + (n - 0.5) * 2 * colorJitter;
+      shade.setRGB(v * (1 + (n - 0.5) * 0.06), v, v * (1 - (n - 0.5) * 0.06));
+      mesh.setColorAt(i, shade);
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [instances, colorJitter]);
 
   useFrame(() => {
     const mesh = meshRef.current;

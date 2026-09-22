@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { timelineStore } from "../../state/timelineStore";
 import { getSceneLocal, type SceneId } from "../../timeline/timeline";
 import { journeyEnvironmentState } from "../../state/journeyEnvironmentState";
+import { quality } from "../../effects/renderQuality";
 
 interface Palette {
   sky: string;
@@ -103,25 +104,29 @@ export function GlobalAtmosphere() {
 
   return (
     <>
-      {/* Low-res outdoor HDRI used only as a reflection source (background stays our own sky/fog) —
+      {/* Outdoor HDRI used only as a reflection source (background stays our own sky/fog) —
           gives glass, painted metal, and clearcoat surfaces real-looking highlights and reflections
           instead of the flat, matte look of lighting alone. */}
-      <Environment preset="park" resolution={128} background={false} />
+      <Environment preset="park" resolution={quality.envResolution} background={false} />
       <ambientLight ref={ambientRef} intensity={DAY.ambient} />
       <hemisphereLight ref={hemiRef} color="#ffffff" groundColor="#5a5548" intensity={0.4} />
+      {/* Shadow frustum is tighter than the scene is wide on purpose: the shot is always within
+          ~20m of the track, and halving the frustum doubles the shadow texel density where it is
+          actually seen. `normalBias` is what removes the peter-panning the old bias left behind. */}
       <directionalLight
         ref={dirLightRef}
         position={[10, 16, 8]}
         intensity={DEFAULT_SUN}
         castShadow
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[quality.shadowMapSize, quality.shadowMapSize]}
         shadow-camera-near={1}
         shadow-camera-far={70}
-        shadow-camera-left={-30}
-        shadow-camera-right={30}
-        shadow-camera-top={30}
-        shadow-camera-bottom={-30}
-        shadow-bias={-0.0015}
+        shadow-camera-left={-22}
+        shadow-camera-right={22}
+        shadow-camera-top={22}
+        shadow-camera-bottom={-22}
+        shadow-bias={-0.0006}
+        shadow-normalBias={0.02}
       />
     </>
   );

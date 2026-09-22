@@ -1,7 +1,8 @@
-import { useMemo, useRef } from "react";
+import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { concreteTexture } from "../../materials/presets";
+import { concreteNormalTexture, concreteTexture } from "../../materials/presets";
+import { useDetailMap } from "../../materials/useDetailMap";
 
 const SURFACE_START = new THREE.Color("#9a876a");
 const SURFACE_END = new THREE.Color("#a8adb2");
@@ -9,6 +10,8 @@ const LAMP_WARM = new THREE.Color("#ffc978");
 const LAMP_COOL = new THREE.Color("#eaf4ff");
 
 const LAMP_Z_POSITIONS = [-8, 0, 8];
+/** Float marks and aggregate in the platform slab — shallow, but it kills the plastic sheen. */
+const CONCRETE_RELIEF = new THREE.Vector2(0.7, 0.7);
 
 interface PlatformProps {
   progressRef: React.MutableRefObject<number>;
@@ -20,12 +23,8 @@ export function Platform({ progressRef }: PlatformProps) {
   const lampMatRefs = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
   const lampLightRef = useRef<THREE.PointLight>(null);
 
-  const surfaceMap = useMemo(() => {
-    const tex = concreteTexture().clone();
-    tex.repeat.set(2, 18);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
+  const surfaceMap = useDetailMap(concreteTexture, 2, 18);
+  const surfaceNormalMap = useDetailMap(concreteNormalTexture, 2, 18);
 
   useFrame(() => {
     const p = progressRef.current;
@@ -44,7 +43,7 @@ export function Platform({ progressRef }: PlatformProps) {
     <group position={[-4.4, 0, 2]}>
       <mesh position={[0, 0.25, 0]} castShadow receiveShadow>
         <boxGeometry args={[2.4, 0.5, 22]} />
-        <meshStandardMaterial ref={surfaceMatRef} color={SURFACE_START} map={surfaceMap} roughness={0.88} />
+        <meshStandardMaterial ref={surfaceMatRef} color={SURFACE_START} map={surfaceMap} normalMap={surfaceNormalMap} normalScale={CONCRETE_RELIEF} roughness={0.88} />
       </mesh>
       <mesh position={[1.15, 0.51, 0]}>
         <boxGeometry args={[0.15, 0.02, 22]} />

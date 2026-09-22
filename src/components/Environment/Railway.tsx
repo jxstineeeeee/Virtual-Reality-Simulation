@@ -1,7 +1,17 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { ballastColorTexture, groundColorTexture, groundRoughnessTexture, railColorTexture } from "../../materials/presets";
+import {
+  ballastColorTexture,
+  ballastNormalTexture,
+  groundColorTexture,
+  groundNormalTexture,
+  groundRoughnessTexture,
+  railColorTexture,
+  railNormalTexture,
+  woodNormalTexture,
+} from "../../materials/presets";
+import { useDetailMap } from "../../materials/useDetailMap";
 
 const TRACK_LENGTH = 140;
 const TRACK_START_Z = -TRACK_LENGTH / 2;
@@ -10,6 +20,12 @@ const POLE_SPACING = 9;
 /** Overhead wires fade in once `progress` (0..1) crosses this band (roughly the diesel->electric transition). */
 const WIRE_FADE_START = 0.36;
 const WIRE_FADE_END = 0.42;
+
+// Normal-map strength per surface: how deep the relief actually is on that material.
+const GROUND_RELIEF = new THREE.Vector2(1.1, 1.1);
+const BALLAST_RELIEF = new THREE.Vector2(1.5, 1.5);
+const RAIL_RELIEF = new THREE.Vector2(0.35, 0.35);
+const TIMBER_RELIEF = new THREE.Vector2(0.8, 0.8);
 
 const GROUND_START = new THREE.Color("#8a7658");
 const GROUND_END = new THREE.Color("#7d876f");
@@ -38,30 +54,14 @@ export function Railway({ progressRef }: RailwayProps) {
   const poleMeshRef = useRef<THREE.InstancedMesh>(null);
   const wireMeshRef = useRef<THREE.InstancedMesh>(null);
 
-  const groundMap = useMemo(() => {
-    const tex = groundColorTexture().clone();
-    tex.repeat.set(10, 24);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
-  const groundRoughMap = useMemo(() => {
-    const tex = groundRoughnessTexture().clone();
-    tex.repeat.set(10, 24);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
-  const ballastMap = useMemo(() => {
-    const tex = ballastColorTexture().clone();
-    tex.repeat.set(3, 60);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
-  const railMap = useMemo(() => {
-    const tex = railColorTexture().clone();
-    tex.repeat.set(1, 70);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
+  const groundMap = useDetailMap(groundColorTexture, 10, 24);
+  const groundRoughMap = useDetailMap(groundRoughnessTexture, 10, 24);
+  const groundNormalMap = useDetailMap(groundNormalTexture, 10, 24);
+  const ballastMap = useDetailMap(ballastColorTexture, 3, 60);
+  const ballastNormalMap = useDetailMap(ballastNormalTexture, 3, 60);
+  const railMap = useDetailMap(railColorTexture, 1, 70);
+  const railNormalMap = useDetailMap(railNormalTexture, 1, 70);
+  const sleeperNormalMap = useDetailMap(woodNormalTexture, 1, 1);
 
   useEffect(() => {
     const mesh = sleeperMeshRef.current;
@@ -126,22 +126,24 @@ export function Railway({ progressRef }: RailwayProps) {
           color={GROUND_START}
           map={groundMap}
           roughnessMap={groundRoughMap}
+          normalMap={groundNormalMap}
+          normalScale={GROUND_RELIEF}
           roughness={0.95}
         />
       </mesh>
 
       <mesh position={[0, 0.05, 0]} receiveShadow>
         <boxGeometry args={[2.6, 0.1, TRACK_LENGTH]} />
-        <meshStandardMaterial ref={ballastMatRef} color={BALLAST_START} map={ballastMap} roughness={0.95} />
+        <meshStandardMaterial ref={ballastMatRef} color={BALLAST_START} map={ballastMap} normalMap={ballastNormalMap} normalScale={BALLAST_RELIEF} roughness={0.95} />
       </mesh>
 
       <mesh position={[0.75, 0.14, 0]} castShadow receiveShadow>
         <boxGeometry args={[0.12, 0.14, TRACK_LENGTH]} />
-        <meshStandardMaterial ref={railMatRefA} color={RAIL_START} map={railMap} metalness={0.85} roughness={0.35} />
+        <meshStandardMaterial ref={railMatRefA} color={RAIL_START} map={railMap} normalMap={railNormalMap} normalScale={RAIL_RELIEF} metalness={0.85} roughness={0.35} />
       </mesh>
       <mesh position={[-0.75, 0.14, 0]} castShadow receiveShadow>
         <boxGeometry args={[0.12, 0.14, TRACK_LENGTH]} />
-        <meshStandardMaterial ref={railMatRefB} color={RAIL_START} map={railMap} metalness={0.85} roughness={0.35} />
+        <meshStandardMaterial ref={railMatRefB} color={RAIL_START} map={railMap} normalMap={railNormalMap} normalScale={RAIL_RELIEF} metalness={0.85} roughness={0.35} />
       </mesh>
       {/* Rail head highlight strip to sell a polished-steel reflection along the running surface */}
       <mesh position={[0.75, 0.208, 0]} receiveShadow>
@@ -155,7 +157,7 @@ export function Railway({ progressRef }: RailwayProps) {
 
       <instancedMesh ref={sleeperMeshRef} args={[undefined, undefined, sleeperCount]} receiveShadow>
         <boxGeometry args={[1.9, 0.12, 0.22]} />
-        <meshStandardMaterial color="#3d2c1e" roughness={0.92} />
+        <meshStandardMaterial color="#3d2c1e" normalMap={sleeperNormalMap} normalScale={TIMBER_RELIEF} roughness={0.92} />
       </instancedMesh>
 
       <instancedMesh ref={poleMeshRef} args={[undefined, undefined, poleCount]} castShadow>

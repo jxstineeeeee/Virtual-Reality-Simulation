@@ -1,13 +1,16 @@
-import { useMemo, useRef } from "react";
+import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { woodGrainTexture } from "../../materials/presets";
+import { woodGrainTexture, woodNormalTexture } from "../../materials/presets";
+import { useDetailMap } from "../../materials/useDetailMap";
 
 const WALL_START = new THREE.Color("#6b5638");
 const WALL_END = new THREE.Color("#d7dbe0");
 const ROOF_START = new THREE.Color("#3a2a1c");
 const ROOF_END = new THREE.Color("#2f3946");
 const SIGN_WARM = new THREE.Color("#ffcf8a");
+/** Raised grain on the station boarding. */
+const PLANK_RELIEF = new THREE.Vector2(0.9, 0.9);
 const SIGN_COOL = new THREE.Color("#7fd4ff");
 
 interface StationProps {
@@ -22,12 +25,8 @@ export function Station({ progressRef }: StationProps) {
   const waterTowerRef = useRef<THREE.Group>(null);
   const signMatRef = useRef<THREE.MeshStandardMaterial>(null);
 
-  const wallMap = useMemo(() => {
-    const tex = woodGrainTexture().clone();
-    tex.repeat.set(3, 2);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
+  const wallMap = useDetailMap(woodGrainTexture, 3, 2);
+  const wallNormalMap = useDetailMap(woodNormalTexture, 3, 2);
 
   useFrame(() => {
     const p = progressRef.current;
@@ -51,7 +50,7 @@ export function Station({ progressRef }: StationProps) {
     <group position={[-6.2, 0, -3]}>
       <mesh position={[0, 1.4, 0]} castShadow receiveShadow>
         <boxGeometry args={[3.2, 2.8, 4.2]} />
-        <meshStandardMaterial ref={wallMatRef} color={WALL_START} map={wallMap} roughness={0.85} />
+        <meshStandardMaterial ref={wallMatRef} color={WALL_START} map={wallMap} normalMap={wallNormalMap} normalScale={PLANK_RELIEF} roughness={0.85} />
       </mesh>
       {/* Windows */}
       <mesh position={[1.62, 1.6, -1.1]}>

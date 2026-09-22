@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { timelineStore } from "../../state/timelineStore";
 import { getSceneLocal, type SceneId } from "../../timeline/timeline";
 import { lookInput } from "./lookInput";
+import { cameraFocusState } from "../../state/cameraFocusState";
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
@@ -89,6 +90,9 @@ export function CameraDirector() {
     const [lx, ly, lz] = currentLook.current;
     dir.current.set(lx - px, ly - py, lz - pz);
     const lookDist = Math.max(dir.current.length(), 0.001);
+    // What this shot is looking at is what the lens should be focused on — see `cameraFocusState`.
+    // Eased rather than snapped, so a cut or a fast pan racks focus instead of popping.
+    cameraFocusState.distance += (lookDist - cameraFocusState.distance) * Math.min(1, delta * 3);
     dir.current.normalize();
     const baseYaw = Math.atan2(dir.current.x, dir.current.z);
     const basePitch = Math.asin(THREE.MathUtils.clamp(dir.current.y, -1, 1));

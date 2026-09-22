@@ -12,8 +12,8 @@ interface SpeckleOptions {
   isColor?: boolean;
 }
 
-/** Small tileable canvas texture: a base tone speckled with soft blotches. Breaks up flat CG color fills. */
-export function createSpeckleTexture({
+/** The speckle pattern as a raw canvas, so it can be turned into a colour map *or* a normal map. */
+export function createSpeckleCanvas({
   size = 256,
   baseColor = "#808080",
   variationColor = "#404040",
@@ -21,8 +21,7 @@ export function createSpeckleTexture({
   minRadius = 1,
   maxRadius = 6,
   opacity = 0.5,
-  isColor = true,
-}: SpeckleOptions = {}): THREE.CanvasTexture {
+}: SpeckleOptions = {}): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -40,6 +39,16 @@ export function createSpeckleTexture({
     ctx.fill();
   }
   ctx.globalAlpha = 1;
+  return canvas;
+}
+
+/** Small tileable canvas texture: a base tone speckled with soft blotches. Breaks up flat CG color fills. */
+export function createSpeckleTexture(options: SpeckleOptions = {}): THREE.CanvasTexture {
+  return tileable(createSpeckleCanvas(options), options.isColor ?? true);
+}
+
+/** Wraps a pattern canvas as a repeating texture, tagged sRGB only when it carries colour. */
+function tileable(canvas: HTMLCanvasElement, isColor: boolean): THREE.CanvasTexture {
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
@@ -57,16 +66,15 @@ interface StreakOptions {
   isColor?: boolean;
 }
 
-/** Tileable canvas texture with fine directional streaks — wood grain, brushed metal. */
-export function createStreakTexture({
+/** The streak pattern as a raw canvas — see `createSpeckleCanvas` for why this is split out. */
+export function createStreakCanvas({
   size = 256,
   baseColor = "#6b4423",
   streakColor = "#4a2f18",
   streakCount = 40,
   opacity = 0.35,
   vertical = false,
-  isColor = true,
-}: StreakOptions = {}): THREE.CanvasTexture {
+}: StreakOptions = {}): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -89,11 +97,67 @@ export function createStreakTexture({
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  if (isColor) texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
+  return canvas;
+}
+
+/** Tileable canvas texture with fine directional streaks — wood grain, brushed metal. */
+export function createStreakTexture(options: StreakOptions = {}): THREE.CanvasTexture {
+  return tileable(createStreakCanvas(options), options.isColor ?? true);
+}
+
+/**
+ * Turns any pattern canvas into a tangent-space normal map, reading its luminance as height and
+ * taking the slope with a Sobel filter.
+ *
+ * This is the single biggest thing missing from the look: every surface in the film is currently
+ * geometrically perfect, so ballast, dirt, rusted iron and sawn timber all catch the light like
+ * polished plastic. A normal map costs nothing at render time and puts real relief back under the
+ * lighting, which is what "photorealistic texture" actually means here — not more pixels.
+ */
+export function createNormalTexture(source: HTMLCanvasElement, strength = 2): THREE.CanvasTexture {
+  const size = source.width;
+  const src = source.getContext("2d")!.getImageData(0, 0, size, size).data;
+  const out = document.createElement("canvas");
+  out.width = size;
+  out.height = size;
+  const ctx = out.getContext("2d")!;
+  const image = ctx.createImageData(size, size);
+
+  // Wrapping lookups, so the normal map tiles as seamlessly as the pattern it came from.
+  const height = (x: number, y: number) => {
+    const xi = (x + size) % size;
+    const yi = (y + size) % size;
+    const i = (yi * size + xi) * 4;
+    return (src[i] * 0.299 + src[i + 1] * 0.587 + src[i + 2] * 0.114) / 255;
+  };
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const tl = height(x - 1, y - 1);
+      const t = height(x, y - 1);
+      const tr = height(x + 1, y - 1);
+      const l = height(x - 1, y);
+      const r = height(x + 1, y);
+      const bl = height(x - 1, y + 1);
+      const b = height(x, y + 1);
+      const br = height(x + 1, y + 1);
+
+      const dx = tl + 2 * l + bl - (tr + 2 * r + br);
+      const dy = tl + 2 * t + tr - (bl + 2 * b + br);
+      const dz = 1 / Math.max(strength, 0.0001);
+
+      const len = Math.hypot(dx, dy, dz) || 1;
+      const i = (y * size + x) * 4;
+      image.data[i] = ((dx / len) * 0.5 + 0.5) * 255;
+      image.data[i + 1] = ((dy / len) * 0.5 + 0.5) * 255;
+      image.data[i + 2] = ((dz / len) * 0.5 + 0.5) * 255;
+      image.data[i + 3] = 255;
+    }
+  }
+
+  ctx.putImageData(image, 0, 0);
+  // A normal map carries vectors, not colour, so it must stay in linear space.
+  return tileable(out, false);
 }
 
 const FONT_STACK = `"Segoe UI", system-ui, "Yu Gothic UI", "Meiryo", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif`;

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { groundColorTexture, groundRoughnessTexture, woodGrainTexture } from "../../materials/presets";
+import { groundColorTexture, groundNormalTexture, groundRoughnessTexture, woodGrainTexture, woodNormalTexture } from "../../materials/presets";
+import { useDetailMap } from "../../materials/useDetailMap";
 
 /** Wooden rail gauge (half-distance from centreline). Narrower than the standard gauge the rest of
  * the film runs on — a colliery waggonway was built to whatever the local wagons happened to be. */
@@ -20,29 +21,21 @@ const sleeperCount = Math.floor(TRACK_LENGTH / SLEEPER_SPACING);
 const STRAP_FROM_Z = 6;
 const strapLength = STRAP_FROM_Z - TRACK_END_Z;
 
+/** Churned, rutted pit ground has far more relief than ballast does; sawn oak has the grain only. */
+const MUD_RELIEF = new THREE.Vector2(1.6, 1.6);
+const TIMBER_RELIEF = new THREE.Vector2(1, 1);
+
 /** A colliery waggonway: oak rails on half-buried timber sleepers, run through churned pit dirt. */
 export function Waggonway() {
   const sleeperRef = useRef<THREE.InstancedMesh>(null);
   const stoneRef = useRef<THREE.InstancedMesh>(null);
 
-  const dirtMap = useMemo(() => {
-    const tex = groundColorTexture().clone();
-    tex.repeat.set(12, 30);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
-  const dirtRoughMap = useMemo(() => {
-    const tex = groundRoughnessTexture().clone();
-    tex.repeat.set(12, 30);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
-  const railMap = useMemo(() => {
-    const tex = woodGrainTexture().clone();
-    tex.repeat.set(1, 90);
-    tex.needsUpdate = true;
-    return tex;
-  }, []);
+  const dirtMap = useDetailMap(groundColorTexture, 12, 30);
+  const dirtRoughMap = useDetailMap(groundRoughnessTexture, 12, 30);
+  const dirtNormalMap = useDetailMap(groundNormalTexture, 12, 30);
+  const railMap = useDetailMap(woodGrainTexture, 1, 90);
+  const railNormalMap = useDetailMap(woodNormalTexture, 1, 90);
+  const sleeperNormalMap = useDetailMap(woodNormalTexture, 1, 1);
 
   useEffect(() => {
     const sleepers = sleeperRef.current;
@@ -87,7 +80,7 @@ export function Waggonway() {
       {/* Churned pit ground */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, TRACK_START_Z - TRACK_LENGTH / 2]} receiveShadow>
         <planeGeometry args={[70, TRACK_LENGTH + 30]} />
-        <meshStandardMaterial color="#6a5844" map={dirtMap} roughnessMap={dirtRoughMap} roughness={1} />
+        <meshStandardMaterial color="#6a5844" map={dirtMap} roughnessMap={dirtRoughMap} normalMap={dirtNormalMap} normalScale={MUD_RELIEF} roughness={1} />
       </mesh>
       {/* The wagon way itself — a raised, rutted causeway of packed spoil the track is laid on */}
       <mesh position={[0, 0.02, TRACK_START_Z - TRACK_LENGTH / 2]} receiveShadow>
@@ -99,7 +92,7 @@ export function Waggonway() {
       {[-1, 1].map((side) => (
         <mesh key={side} position={[side * WAGGONWAY_HALF_GAUGE, 0.11, TRACK_START_Z - TRACK_LENGTH / 2]} castShadow receiveShadow>
           <boxGeometry args={[0.15, 0.12, TRACK_LENGTH]} />
-          <meshStandardMaterial color="#5a4327" map={railMap} roughness={0.85} />
+          <meshStandardMaterial color="#5a4327" map={railMap} normalMap={railNormalMap} normalScale={TIMBER_RELIEF} roughness={0.85} />
         </mesh>
       ))}
 
@@ -113,12 +106,12 @@ export function Waggonway() {
 
       <instancedMesh ref={sleeperRef} args={[undefined, undefined, sleeperCount]} receiveShadow castShadow>
         <boxGeometry args={[1.75, 0.13, 0.2]} />
-        <meshStandardMaterial color="#4a3826" roughness={0.95} />
+        <meshStandardMaterial color="#4a3826" normalMap={sleeperNormalMap} normalScale={TIMBER_RELIEF} roughness={0.95} />
       </instancedMesh>
 
       <instancedMesh ref={stoneRef} args={[undefined, undefined, 90]} castShadow receiveShadow>
         <dodecahedronGeometry args={[1, 0]} />
-        <meshStandardMaterial color="#2e2a26" roughness={0.9} />
+        <meshStandardMaterial color="#2e2a26" roughness={0.9} metalness={0.08} />
       </instancedMesh>
     </group>
   );
