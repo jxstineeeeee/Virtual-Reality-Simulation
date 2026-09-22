@@ -43,7 +43,7 @@ const CUES: Partial<Record<SceneId, AudioCue[]>> = {
     { t: 30, kind: "conductor" },
   ],
   // Scene 3 — sat inside while the station carries on outside the glass.
-  interior: [{ t: 11, kind: "chime" }],
+  interior: [{ t: 6, kind: "chime" }],
   // Scene 4 — doors shut, the guard waves it off, couplers snatch, and it whistles away.
   departure: [
     { t: DEP_DOOR_CLOSE, kind: "doorThunk" },
@@ -53,8 +53,8 @@ const CUES: Partial<Record<SceneId, AudioCue[]>> = {
   ],
   // Scene 5 — whistling for the level crossings the line keeps throwing at it.
   journey: [
-    { t: 21, kind: "horn" },
-    { t: 39, kind: "horn" },
+    { t: 14, kind: "horn" },
+    { t: 20, kind: "horn" },
   ],
   // Scene 6 — whistle on the approach, then the platform, then that train's door shuts for good.
   exteriorRide: [

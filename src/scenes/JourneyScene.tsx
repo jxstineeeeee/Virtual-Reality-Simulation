@@ -20,11 +20,13 @@ export function journeyDistance(local: number): number {
 
 type Biome = "outskirts" | "town" | "countryside" | "fields" | "mountains";
 
+// The 5-minute cut only plays this scene's first 27 design-seconds (see `SceneDef.designSpan`), so
+// the run of biomes is compressed to fit rather than ending in the outskirts every time.
 function biomeAt(local: number): Biome {
-  if (local < 8) return "outskirts";
-  if (local < 19) return "town";
-  if (local < 31) return "countryside";
-  if (local < 41) return "fields";
+  if (local < 4) return "outskirts";
+  if (local < 10) return "town";
+  if (local < 16) return "countryside";
+  if (local < 21) return "fields";
   return "mountains";
 }
 

@@ -1,10 +1,9 @@
 import { useSyncExternalStore } from "react";
 import { timelineStore } from "../../state/timelineStore";
-import { SCENES } from "../../timeline/timeline";
+import { sceneLocalAt } from "../../timeline/timeline";
 import { EVOLUTION_TRANSITION_POINTS } from "../../scenes/EvolutionScene";
 import { EVOLUTION_DURATION } from "../../data/timeline";
 
-const EVOLUTION_START = SCENES.find((s) => s.id === "evolution")!.start;
 const BOUNDARIES = EVOLUTION_TRANSITION_POINTS;
 
 const FADE = 0.5; // seconds to fade to/from black on each side of a boundary
@@ -32,7 +31,7 @@ function darknessAt(local: number): number {
  * train models — the passenger's view goes dark for a beat while the cabin around them changes. */
 export function EvolutionEraFade() {
   const elapsed = useSyncExternalStore(timelineStore.subscribe, timelineStore.getElapsed);
-  const local = elapsed - EVOLUTION_START;
+  const local = sceneLocalAt("evolution", elapsed);
   const opacity = local >= 0 && local <= EVOLUTION_DURATION ? darknessAt(local) : 0;
   if (opacity <= 0) return null;
   return (

@@ -1,15 +1,19 @@
 import { useSyncExternalStore } from "react";
 import { timelineStore } from "../../state/timelineStore";
-import { SCENES } from "../../timeline/timeline";
+import { SCENES, sceneTimeAt } from "../../timeline/timeline";
 import { FIRST_ARRIVAL_EXIT_CUT } from "../../scenes/ExteriorRideScene";
 import { ARRIVAL_EXIT_CUT } from "../../scenes/ArrivalScene";
 
 const FADE_IN = 0.15;
 const FADE_OUT = 0.35;
 
-const sceneStart = (id: string) => SCENES.find((s) => s.id === id)!.start;
-/** Cuts inside a scene: from an arriving cabin's interior to standing in the train's open doorway. */
-const MID_SCENE_CUTS = [sceneStart("exteriorRide") + FIRST_ARRIVAL_EXIT_CUT, sceneStart("arrival") + ARRIVAL_EXIT_CUT];
+/** Cuts inside a scene: from an arriving cabin's interior to standing in the train's open doorway.
+ * Both constants are in their scene's design seconds, so they go through `sceneTimeAt` to land on
+ * the clock at the same instant the picture actually cuts. */
+const MID_SCENE_CUTS = [
+  sceneTimeAt("exteriorRide", FIRST_ARRIVAL_EXIT_CUT),
+  sceneTimeAt("arrival", ARRIVAL_EXIT_CUT),
+];
 const CUT_TIMES = [...SCENES.filter((s) => s.hardCut && s.start !== 0).map((s) => s.start), ...MID_SCENE_CUTS];
 
 /** A quick flash-to-black at every hard cut, so location jumps read as a deliberate edit. */

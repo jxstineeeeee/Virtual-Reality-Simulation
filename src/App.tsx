@@ -5,9 +5,11 @@ import { Experience } from "./scenes/Experience";
 import { SceneTitle } from "./components/UI/SceneTitle";
 import { BoardingCue } from "./components/UI/BoardingCue";
 import { Controls } from "./components/UI/Controls";
+import { SoundGate } from "./components/UI/SoundGate";
 import { CutFade } from "./components/UI/CutFade";
 import { EvolutionFootageOverlay } from "./components/UI/EvolutionFootageOverlay";
 import { EvolutionEraFade } from "./components/UI/EvolutionEraFade";
+import { NarrationCaption } from "./components/UI/NarrationCaption";
 import { SplitMirror } from "./effects/SplitMirror";
 import "./App.css";
 
@@ -17,6 +19,7 @@ function EyeOverlays() {
     <>
       <SceneTitle />
       <BoardingCue />
+      <NarrationCaption />
       <CutFade />
       <EvolutionFootageOverlay />
       <EvolutionEraFade />
@@ -45,6 +48,7 @@ function App() {
         </div>
       )}
       <Controls split={split} onToggleSplit={() => setSplit((s) => !s)} />
+      <SoundGate />
     </div>
   );
 }

@@ -12,27 +12,34 @@ export interface Era {
   trainSpeed: number;
 }
 
-/** Local duration (seconds) of the Evolution scene within the master 8-minute timeline. Each
- * generation now gets a substantial ride (not just a brief cabin flash) so the back half of the
- * 8 minutes carries as much weight as the front-loaded steam sequence. */
-export const EVOLUTION_DURATION = 170;
+/** Local duration (seconds) of the Evolution scene. In the 5-minute cut this is the heart of the
+ * film: three of the seven stages of the railway's evolution — diesel, electrification, high-speed —
+ * each get exactly 40 seconds of it, counting the handoff that introduces the generation plus the
+ * ride on it. */
+export const EVOLUTION_DURATION = 120;
 
 /** Crossfade window (seconds) used at era boundaries for train + title transitions. Kept short so
  * the outgoing/incoming train's semi-transparent "dissolve" state is brief rather than a lingering
  * see-through ghost. */
 export const ERA_TRANSITION_SECONDS = 0.45;
 
+// Each window runs from the moment that generation starts arriving to the moment the next one does,
+// so a "stage" is the 25-second handoff plus the ride that follows it:
+//   diesel      20 -> 65   (ride 20-40, then the diesel is swapped for the electric)
+//   electric    65 -> 105  (ride 65-80, then the electric is swapped for the modern unit)
+//   high-speed 105 -> 120  (the closing run)
+// The handoffs themselves are carved off the end of each window by `EvolutionScene`.
 export const ERAS: Era[] = [
   { id: "steam", title: "STEAM ERA", start: 0, end: 20, trainSpeed: 0.6 },
-  { id: "diesel", title: "DIESEL ERA", start: 20, end: 76, trainSpeed: 1.5 },
-  { id: "electric", title: "ELECTRIC ERA", start: 76, end: 136, trainSpeed: 2.6 },
-  { id: "modern", title: "MODERN ERA", start: 136, end: 160, trainSpeed: 4 },
+  { id: "diesel", title: "DIESEL ERA", start: 20, end: 65, trainSpeed: 1.5 },
+  { id: "electric", title: "ELECTRIFICATION", start: 65, end: 105, trainSpeed: 2.6 },
+  { id: "modern", title: "HIGH-SPEED RAIL", start: 105, end: 114, trainSpeed: 4 },
   {
     id: "final",
     title: "TRAIN EVOLUTION",
     subtitle: "From Steam to Speed",
-    start: 160,
-    end: 170,
+    start: 114,
+    end: 120,
     trainSpeed: 4.5,
   },
 ];

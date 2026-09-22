@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore, type CSSProperties } from "react";
 import { timelineStore } from "../../state/timelineStore";
 import { TOTAL_DURATION } from "../../timeline/timeline";
 import { trainAudio } from "../../audio/TrainAudioEngine";
+import { narration } from "../../audio/NarrationEngine";
 import { lookInput } from "../Camera/lookInput";
 
 const isTouchDevice = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
@@ -36,13 +37,16 @@ export function Controls({ split, onToggleSplit }: ControlsProps) {
   const elapsed = useSyncExternalStore(timelineStore.subscribe, timelineStore.getElapsed);
   const playing = useSyncExternalStore(timelineStore.subscribe, timelineStore.getPlaying);
   const gyroActive = useSyncExternalStore(lookInput.subscribe, lookInput.getGyroActive);
+  const voiceOver = useSyncExternalStore(narration.subscribe, narration.getEnabled);
   const [muted, setMuted] = useState(false);
   const progress = Math.min(elapsed / TOTAL_DURATION, 1);
   const finished = elapsed >= TOTAL_DURATION;
 
   const handlePlay = () => {
     void lookInput.enableMotion(); // iOS only shows the motion-access prompt inside a tap
-    trainAudio.start(); // must originate from a user gesture — browser autoplay policy
+    // Browser autoplay policy: the audio has to be unlocked from inside the gesture. Normally the
+    // start-up SoundGate has already done it; this covers the viewer who skipped sound there.
+    void trainAudio.unlock();
     if (playing) timelineStore.pause();
     else timelineStore.play();
   };
@@ -50,7 +54,18 @@ export function Controls({ split, onToggleSplit }: ControlsProps) {
   const handleMuteToggle = () => {
     const next = !muted;
     trainAudio.setMuted(next);
+    // The narrator runs through the browser's speech synthesis, outside the train audio graph, so
+    // the mute button has to silence it separately — otherwise a "muted" film still talks.
+    narration.setMuted(next);
     setMuted(next);
+  };
+
+  const handleVoiceOverToggle = () => {
+    const next = !voiceOver;
+    // Turning it back on has to happen inside the tap: that is the only moment a phone will let
+    // speech synthesis start.
+    if (next) narration.prime();
+    narration.setEnabled(next);
   };
 
   return (
@@ -110,6 +125,13 @@ export function Controls({ split, onToggleSplit }: ControlsProps) {
         </button>
         <button style={{ ...buttonStyle, minWidth: 44 }} onClick={handleMuteToggle}>
           {muted ? "\u{1F507}" : "\u{1F50A}"}
+        </button>
+        <button
+          style={voiceOver ? buttonStyle : { ...buttonStyle, background: "rgba(245,245,240,0.4)" }}
+          onClick={handleVoiceOverToggle}
+          title={voiceOver ? "Turn the narration off" : "Turn the narration on"}
+        >
+          {voiceOver ? "VOICE ON" : "VOICE OFF"}
         </button>
         <button style={buttonStyle} onClick={onToggleSplit}>
           {split ? "1 SCREEN" : "2 SCREENS"}

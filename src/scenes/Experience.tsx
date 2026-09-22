@@ -6,6 +6,7 @@ import { GlobalAtmosphere } from "../components/Environment/GlobalAtmosphere";
 import { CameraDirector } from "../components/Camera/CameraDirector";
 import { PostFX } from "../effects/PostFX";
 import { AudioDriver } from "../audio/AudioDriver";
+import { NarrationDriver } from "../audio/NarrationDriver";
 import { PreviewScene } from "./PreviewScene";
 import { BoardingScene } from "./BoardingScene";
 import { InteriorScene } from "./InteriorScene";
@@ -59,6 +60,7 @@ export function Experience() {
       <GlobalAtmosphere />
       <CameraDirector />
       <AudioDriver />
+      <NarrationDriver />
       <ActiveScene />
       <PostFX />
     </>

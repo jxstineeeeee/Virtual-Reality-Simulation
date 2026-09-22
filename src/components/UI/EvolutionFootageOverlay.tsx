@@ -1,9 +1,8 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { timelineStore } from "../../state/timelineStore";
-import { SCENES } from "../../timeline/timeline";
+import { sceneLocalAt } from "../../timeline/timeline";
 import { publicAsset } from "../../assets/publicAsset";
 
-const EVOLUTION_START = SCENES.find((s) => s.id === "evolution")!.start;
 
 // A brief cinematic insert of real archival footage as the steam train pulls away for the last time,
 // before the diesel arrives — "3D train -> real footage -> 3D train" per the brief, used sparingly (one
@@ -30,7 +29,7 @@ function overlayOpacity(local: number): number {
 export function EvolutionFootageOverlay() {
   const elapsed = useSyncExternalStore(timelineStore.subscribe, timelineStore.getElapsed);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const local = elapsed - EVOLUTION_START;
+  const local = sceneLocalAt("evolution", elapsed);
   const active = local >= WINDOW_START && local <= WINDOW_END;
   const opacity = overlayOpacity(local);
 

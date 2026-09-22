@@ -17,10 +17,12 @@ class JourneyEnvironmentState {
 
 export const journeyEnvironmentState = new JourneyEnvironmentState();
 
-const TUNNEL_START = 44;
-const TUNNEL_FADE_IN_END = 45;
-const TUNNEL_FADE_OUT_START = 49;
-const TUNNEL_END = 50;
+// Late in the mountain stretch, but inside the 27 design-seconds of this scene the 5-minute cut
+// actually plays — at the far end of the old timings the tunnel simply never arrived.
+const TUNNEL_START = 21;
+const TUNNEL_FADE_IN_END = 21.8;
+const TUNNEL_FADE_OUT_START = 24.5;
+const TUNNEL_END = 25.3;
 
 /** 0..1 tunnel darkness for a given local journey-scene time — a short passage late in the mountain
  * stretch, per the brief's "sunlight -> tree shadow -> tunnel -> tunnel lights -> exit" beat. */

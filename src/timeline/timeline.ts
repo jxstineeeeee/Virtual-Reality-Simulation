@@ -18,25 +18,62 @@ export interface SceneDef {
   end: number;
   /** Opens with a hard cut (camera + location change) rather than continuing the previous shot. */
   hardCut: boolean;
+  /**
+   * How many seconds of the scene's *own* choreography play inside this window. Each scene keeps its
+   * keyframes, door timings and cue constants in its original design seconds; this is what maps them
+   * onto the shorter runtime, so nothing inside a scene had to be re-tuned by hand:
+   *   scale = designSpan / (end - start)  — above 1 the scene simply plays tighter
+   * and any choreography past `designSpan` is never reached, which is how the long rides are trimmed
+   * rather than sped up to a blur.
+   */
+  designSpan: number;
 }
 
-/** Full cinematic runtime: ~8 minutes. */
-export const TOTAL_DURATION = 480;
+/** Full cinematic runtime: 5 minutes. */
+export const TOTAL_DURATION = 300;
 
-// Rebalanced so the steam-era loop (preview..exteriorRide) no longer eats most of the runtime: it now
-// takes ~3:45 of the 8 minutes, leaving ~4:15 for diesel/electric/modern to each get a real ride
-// instead of a brief crossfade. Each steam scene's internal keyframe timings are scaled to match.
+// The 5-minute cut, built around the seven stages of the railway's evolution: early railways (the
+// prologue on the platform), steam, diesel, electrification, high-speed, smart rail, and what comes
+// next. The three middle generations each get 40 seconds of the Evolution scene (ride + handoff),
+// and the steam block keeps the longest run because it is the only stage with a whole story — board,
+// ride, arrive — built for it. `designSpan` per scene does the compressing; see `SceneDef`.
 export const SCENES: SceneDef[] = [
-  { id: "preview", title: "THE TRAIN", start: 0, end: 30, hardCut: false },
-  { id: "boarding", title: "BOARDING", start: 30, end: 65, hardCut: true },
-  { id: "interior", title: "ONBOARD", start: 65, end: 95, hardCut: true },
-  { id: "departure", title: "DEPARTURE", start: 95, end: 125, hardCut: false },
-  { id: "journey", title: "THE JOURNEY", start: 125, end: 180, hardCut: true },
-  { id: "exteriorRide", title: "FIRST ARRIVAL", start: 180, end: 225, hardCut: true },
-  { id: "evolution", title: "TRAIN EVOLUTION", start: 225, end: 395, hardCut: true },
-  { id: "modernRide", title: "THE NEW GENERATION", start: 395, end: 450, hardCut: true },
-  { id: "arrival", title: "ARRIVAL", start: 450, end: 480, hardCut: false },
+  { id: "preview", title: "EARLY RAILWAYS", start: 0, end: 18, hardCut: false, designSpan: 27 },
+  { id: "boarding", title: "THE STEAM ERA", start: 18, end: 42, hardCut: true, designSpan: 35 },
+  { id: "interior", title: "ONBOARD", start: 42, end: 54, hardCut: true, designSpan: 18 },
+  { id: "departure", title: "DEPARTURE", start: 54, end: 74, hardCut: false, designSpan: 30 },
+  { id: "journey", title: "THE JOURNEY", start: 74, end: 92, hardCut: true, designSpan: 27 },
+  { id: "exteriorRide", title: "THE END OF STEAM", start: 92, end: 118, hardCut: true, designSpan: 41 },
+  { id: "evolution", title: "TRAIN EVOLUTION", start: 118, end: 238, hardCut: true, designSpan: 120 },
+  { id: "modernRide", title: "SMART RAIL", start: 238, end: 278, hardCut: true, designSpan: 56 },
+  { id: "arrival", title: "THE FUTURE", start: 278, end: 300, hardCut: false, designSpan: 31 },
 ];
+
+/** How much faster than its design timings a scene plays inside its (shorter) window. */
+export function sceneTimeScale(scene: SceneDef): number {
+  return scene.designSpan / Math.max(scene.end - scene.start, 0.0001);
+}
+
+export function getScene(id: SceneId): SceneDef {
+  return SCENES.find((s) => s.id === id)!;
+}
+
+/**
+ * Absolute clock time at which a scene reaches `local` of its own design seconds. Anything outside a
+ * scene that has to line up with a moment *inside* it — a cut flash, an overlay — has to go through
+ * this rather than adding the local time to the scene's start, which stopped being the same thing
+ * once scenes began playing tighter than they were authored (see `SceneDef.designSpan`).
+ */
+export function sceneTimeAt(id: SceneId, local: number): number {
+  const scene = getScene(id);
+  return scene.start + local / sceneTimeScale(scene);
+}
+
+/** A scene's own design-seconds clock for an absolute time, without going through `getSceneAt`. */
+export function sceneLocalAt(id: SceneId, elapsed: number): number {
+  const scene = getScene(id);
+  return (elapsed - scene.start) * sceneTimeScale(scene);
+}
 
 export function getSceneAt(t: number): SceneDef {
   const clamped = Math.min(Math.max(t, 0), TOTAL_DURATION);
@@ -46,7 +83,7 @@ export function getSceneAt(t: number): SceneDef {
 
 export interface SceneLocal {
   scene: SceneDef;
-  /** seconds elapsed within the scene, clamped to its span */
+  /** Scene-local time in the scene's own design seconds (see `SceneDef.designSpan`), clamped to it. */
   local: number;
   /** 0..1 progress through the scene */
   progress: number;
@@ -56,9 +93,10 @@ export interface SceneLocal {
 export function getSceneLocal(t: number): SceneLocal {
   const scene = getSceneAt(t);
   const index = SCENES.indexOf(scene);
-  const span = Math.max(scene.end - scene.start, 0.0001);
-  const local = Math.min(Math.max(t - scene.start, 0), span);
-  return { scene, local, progress: local / span, index };
+  // Scene-local time is in the scene's own design seconds, not wall-clock seconds into the window,
+  // so every keyframe, door timing and audio cue inside a scene still means what it always did.
+  const local = Math.min(Math.max(t - scene.start, 0) * sceneTimeScale(scene), scene.designSpan);
+  return { scene, local, progress: local / scene.designSpan, index };
 }
 
 /** Ken Perlin's smootherstep: eases in and out. */

@@ -16,6 +16,9 @@ interface UpdateOpts {
 
 const BASE_PITCH: Record<AudioEra, number> = { idle: 26, steam: 22, diesel: 34, electric: 90, modern: 70 };
 
+/** How long `TrainAudioEngine.unlock` waits for the browser before calling the audio blocked. */
+const UNLOCK_TIMEOUT_MS = 1500;
+
 /** World-units of travel between wheel clacks (rail joints) and between steam chimney beats. */
 const CLACK_SPACING = 1.2;
 const CHUFF_SPACING = 0.75;
@@ -43,6 +46,39 @@ const HORN: Record<AudioEra, HornVoice> = {
   idle: { freqs: [523, 659, 784], type: "triangle", seconds: 1.9, peak: 0.26, cutoff: 3200, breath: 0.12 },
 };
 
+/** iOS 16.4+ lets a page declare what kind of sound it makes; see `TrainAudioEngine.unlock`. */
+type NavigatorWithAudioSession = Navigator & { audioSession?: { type: string } };
+
+/**
+ * A tenth of a second of silence as a WAV data URI, built here rather than shipped as an asset so it
+ * costs no extra request. Played through an `<audio>` element by `TrainAudioEngine.unlock`.
+ */
+function silentWavUrl(): string {
+  const sampleRate = 8000;
+  const samples = sampleRate / 10;
+  const bytes = new Uint8Array(44 + samples);
+  const view = new DataView(bytes.buffer);
+  const ascii = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+  ascii(0, "RIFF");
+  view.setUint32(4, 36 + samples, true);
+  ascii(8, "WAVEfmt ");
+  view.setUint32(16, 16, true); // fmt chunk length
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate, true); // byte rate: 1 byte per sample, mono
+  view.setUint16(32, 1, true); // block align
+  view.setUint16(34, 8, true); // bits per sample
+  ascii(36, "data");
+  view.setUint32(40, samples, true);
+  bytes.fill(0x80, 44); // silence in 8-bit PCM sits at mid-scale, not at zero
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return `data:audio/wav;base64,${btoa(binary)}`;
+}
+
 /**
  * Synthesizes train audio in real time from Web Audio API primitives, driven every frame by the
  * cinematic's actual speed/era/door state (via `update` plus the one-shot `play*` calls) rather than
@@ -69,12 +105,61 @@ export class TrainAudioEngine {
   private tunnelGain: GainNode | null = null;
   /** One shared noise buffer, re-used by every noise-based one-shot instead of reallocating. */
   private noiseBuffer: AudioBuffer | null = null;
+  /** Silent `<audio>` loop that keeps iOS on its media channel — see `unlock`. */
+  private keepAlive: HTMLAudioElement | null = null;
+  private watchingVisibility = false;
 
   private clackDistance = 0;
   private chuffDistance = 0;
   private muted = false;
   private playing = true;
   private unmutedVolume = 0.8;
+  /** 0..1 multiplier pulled down while the narrator is speaking — see `setDuck`. */
+  private duck = 1;
+
+  /** True once the browser has actually let the audio graph run, rather than leaving it suspended. */
+  get isRunning(): boolean {
+    return this.ctx?.state === "running";
+  }
+
+  /**
+   * Turns the sound on from inside a user gesture and reports whether the browser really allowed it,
+   * so the UI can tell the viewer when it did not.
+   *
+   * Phones need more than `new AudioContext()`. The context comes up suspended until a gesture
+   * resumes it, and on iOS its output counts as a *ringer* sound — silent whenever the side switch is
+   * on Silent — until the page has played an `<audio>` element, which moves it onto the media channel.
+   * iOS 16.4+ exposes `navigator.audioSession` to ask for that directly; older versions only take the
+   * hint from the silent loop. Desktop needs none of this, which is why sound worked there already.
+   */
+  async unlock(): Promise<boolean> {
+    const session = (navigator as NavigatorWithAudioSession).audioSession;
+    if (session) session.type = "playback";
+    // Everything that has to come from the gesture runs before the first `await`: Safari stops
+    // treating the rest of an async function as user-activated once it resumes on a later task.
+    this.startKeepAlive();
+    this.start();
+    // A browser that won't allow audio leaves `resume()` pending indefinitely rather than rejecting,
+    // so the wait is capped — otherwise the button that called this would sit disabled forever.
+    const resumed = this.ctx?.resume().catch(() => {
+      // Refused outright; `isRunning` below reports it either way.
+    });
+    await Promise.race([resumed, new Promise((done) => setTimeout(done, UNLOCK_TIMEOUT_MS))]);
+    return this.isRunning;
+  }
+
+  /** Starts (or restarts) the silent loop that keeps the iOS media session open. */
+  private startKeepAlive() {
+    if (!this.keepAlive) {
+      const el = new Audio(silentWavUrl());
+      el.loop = true;
+      el.setAttribute("playsinline", ""); // iOS otherwise hands playback to the fullscreen native player
+      this.keepAlive = el;
+    }
+    void this.keepAlive.play().catch(() => {
+      // Nothing to fall back to; `unlock` still reports whether the context came up running.
+    });
+  }
 
   /** Must be called from a user-gesture handler (browser autoplay policy). No-op once started. */
   start() {
@@ -176,6 +261,17 @@ export class TrainAudioEngine {
     ambienceGain.gain.value = 0.5;
     ambienceGain.connect(outsideFilter);
     this.ambienceGain = ambienceGain;
+
+    // Locking the phone or switching apps suspends the context; without this the cinematic would
+    // come back to a silent soundtrack with no button left to press.
+    if (!this.watchingVisibility) {
+      this.watchingVisibility = true;
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) return;
+        this.startKeepAlive();
+        void this.ctx?.resume();
+      });
+    }
   }
 
   /** Starts a looping white-noise source into `dest`. Used for every continuous noise bed. */
@@ -194,12 +290,23 @@ export class TrainAudioEngine {
   }
 
   private masterTarget(): number {
-    return this.muted || !this.playing ? 0 : this.unmutedVolume;
+    return this.muted || !this.playing ? 0 : this.unmutedVolume * this.duck;
   }
 
-  private applyMasterGain() {
+  private applyMasterGain(timeConstant = 0.05) {
     if (!this.master || !this.ctx) return;
-    this.master.gain.setTargetAtTime(this.masterTarget(), this.ctx.currentTime, 0.05);
+    this.master.gain.setTargetAtTime(this.masterTarget(), this.ctx.currentTime, timeConstant);
+  }
+
+  /**
+   * Ducks the whole train/station mix under the voice-over: 1 is full level, lower values pull it
+   * back. Ramped more slowly than a mute so the world dips under the narrator rather than blinking.
+   */
+  setDuck(level: number) {
+    const next = Math.min(Math.max(level, 0), 1);
+    if (next === this.duck) return;
+    this.duck = next;
+    this.applyMasterGain(0.12);
   }
 
   setMuted(muted: boolean) {

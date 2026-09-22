@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { timelineStore } from "../state/timelineStore";
 import { journeyEnvironmentState } from "../state/journeyEnvironmentState";
-import { getSceneLocal, type SceneId } from "../timeline/timeline";
+import { getSceneLocal, sceneTimeScale, type SceneId } from "../timeline/timeline";
 import { getEraAtTime } from "../data/timeline";
 import { arrivalDoorOpen } from "../scenes/ArrivalScene";
 import { firstArrivalDoorOpen } from "../scenes/ExteriorRideScene";
@@ -75,12 +75,18 @@ export function AudioDriver() {
     let speed = 0;
     let era: AudioEra = SCENE_ERA[scene.id] ?? "idle";
 
+    // A scene's analytic speed function is written in its own design seconds, and the shortened cut
+    // plays those faster (see `SceneDef.designSpan`) — so what's on screen is moving by that much
+    // more per real second. The differentiated branch below measures real time and needs no such
+    // correction.
+    const timeScale = sceneTimeScale(scene);
+
     if (scene.id === "evolution") {
       const activeEra = getEraAtTime(local);
-      speed = evolutionAudioSpeed(local);
+      speed = evolutionAudioSpeed(local) * timeScale;
       era = activeEra.id === "final" ? "modern" : activeEra.id;
     } else if (SPEED_FN[scene.id]) {
-      speed = SPEED_FN[scene.id]!(local);
+      speed = SPEED_FN[scene.id]!(local) * timeScale;
     } else if (POSITION_FN[scene.id]) {
       const pos = POSITION_FN[scene.id]!(local);
       speed = Math.abs(pos - prevPos.current) / delta;
