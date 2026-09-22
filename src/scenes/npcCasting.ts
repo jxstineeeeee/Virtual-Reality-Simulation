@@ -10,7 +10,7 @@ export const STEAM_CABIN_PASSENGERS: CabinPassengerConfig = { era: "steam", seed
 /** The modern train is busier, with someone standing at the door pole. */
 export const MODERN_CABIN_PASSENGERS: CabinPassengerConfig = { era: "modern", seed: 51, density: 0.8, avoidZ: RIDE_CAMERA_Z, standing: true };
 
-/** Camera [x, z] positions on/near the platform in the Preview and Boarding shots. */
+/** Camera [x, z] positions on/near the platform in the Boarding shots. */
 export const STEAM_STATION_AVOID: [number, number][] = [
   [-3.2, 9],
   [-3.3, 10.5],

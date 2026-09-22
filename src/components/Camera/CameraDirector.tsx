@@ -7,9 +7,10 @@ import { lookInput } from "./lookInput";
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
-/** Scenes shot from inside the cabin get a faint procedural sway — a seated passenger's head isn't
- * perfectly still. Exterior/cinematic scenes stay untouched so hard-cut shots never pick up a wobble. */
-const INTERIOR_SWAY_SCENES = new Set<SceneId>(["preview", "interior", "departure", "journey", "exteriorRide", "arrival", "evolution"]);
+/** Scenes where the camera is a person's head — seated in a carriage, or on their feet beside the
+ * track — get a faint procedural sway, because nobody holds perfectly still. Purely cinematic
+ * scenes stay untouched so hard-cut shots never pick up a wobble. */
+const HANDHELD_SWAY_SCENES = new Set<SceneId>(["earlyRail", "interior", "departure", "journey", "exteriorRide", "arrival", "evolution"]);
 const SWAY_AMPLITUDE = 0.012; // meters — deliberately tiny; this is a sway, not a shake
 
 /** Absolute pitch clamp on the *final* look direction (scripted gaze + mouse offset combined), so
@@ -17,7 +18,7 @@ const SWAY_AMPLITUDE = 0.012; // meters — deliberately tiny; this is a sway, n
 const PITCH_LIMIT_ABS = (80 * Math.PI) / 180;
 
 import type { CameraShotResult } from "./shotUtils";
-import { previewShot } from "../../scenes/PreviewScene";
+import { earlyRailShot } from "../../scenes/EarlyRailScene";
 import { boardingShot } from "../../scenes/BoardingScene";
 import { interiorShot } from "../../scenes/InteriorScene";
 import { departureShot } from "../../scenes/DepartureScene";
@@ -30,7 +31,7 @@ import { arrivalShot } from "../../scenes/ArrivalScene";
 type ShotFn = (local: number, elapsed: number) => CameraShotResult;
 
 const SHOTS: Record<SceneId, ShotFn> = {
-  preview: previewShot,
+  earlyRail: earlyRailShot,
   boarding: boardingShot,
   interior: interiorShot,
   departure: departureShot,
@@ -42,7 +43,7 @@ const SHOTS: Record<SceneId, ShotFn> = {
 };
 
 /**
- * The single camera driver for the whole 8-minute experience: every frame it looks up which scene
+ * The single camera driver for the whole five-minute experience: every frame it looks up which scene
  * is active, asks that scene's pure shot function for the desired pose, and eases the real R3F
  * camera toward it. Scenes marked `hardCut` snap instantly on entry instead of drifting into frame.
  */
@@ -74,7 +75,7 @@ export function CameraDirector() {
     }
 
     let [px, py, pz] = currentPos.current;
-    if (INTERIOR_SWAY_SCENES.has(scene.id)) {
+    if (HANDHELD_SWAY_SCENES.has(scene.id)) {
       // Two off-ratio sine waves so the sway doesn't read as a mechanical, perfectly periodic loop.
       const time = timelineStore.getElapsed();
       px += Math.sin(time * 0.55) * SWAY_AMPLITUDE + Math.sin(time * 1.3) * SWAY_AMPLITUDE * 0.4;

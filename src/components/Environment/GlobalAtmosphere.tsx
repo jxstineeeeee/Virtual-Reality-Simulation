@@ -12,15 +12,24 @@ interface Palette {
   ambient: number;
   fogNear: number;
   fogFar: number;
+  /** Key-light strength. Defaults to `DEFAULT_SUN` — only scenes with genuinely different weather set it. */
+  sunIntensity?: number;
 }
+
+/** Directional-light intensity every scene uses unless its palette overrides it. */
+const DEFAULT_SUN = 2.6;
 
 const DAY: Palette = { sky: "#bcd9f0", sun: "#fff6e8", ambient: 0.55, fogNear: 20, fogFar: 90 };
 const GOLDEN: Palette = { sky: "#f0c987", sun: "#ffdca0", ambient: 0.5, fogNear: 16, fogFar: 80 };
 const COOL: Palette = { sky: "#cfe9ff", sun: "#eaf6ff", ambient: 0.6, fogNear: 22, fogFar: 100 };
 const SUNSET: Palette = { sky: "#f3b878", sun: "#ffd9a0", ambient: 0.48, fogNear: 14, fogFar: 70 };
+/** First light over a colliery: low overcast, coal smoke in the air, and a horizon that closes in
+ * at 40 metres — so the lanterns and the brazier are doing real work rather than decorating a
+ * daylit scene, and the rails run away into nothing at the end of the shot. */
+const PIT_DAWN: Palette = { sky: "#6e6a63", sun: "#c9b79a", ambient: 0.26, fogNear: 8, fogFar: 44, sunIntensity: 0.95 };
 
 const PALETTES: Partial<Record<SceneId, Palette>> = {
-  preview: DAY,
+  earlyRail: PIT_DAWN,
   boarding: DAY,
   interior: DAY,
   departure: DAY,
@@ -39,6 +48,7 @@ export function GlobalAtmosphere() {
   const { scene } = useThree();
   const dirLightRef = useRef<THREE.DirectionalLight>(null);
   const ambientRef = useRef<THREE.AmbientLight>(null);
+  const hemiRef = useRef<THREE.HemisphereLight>(null);
   const fogRef = useRef(new THREE.Fog(new THREE.Color(DAY.sky).getHex(), DAY.fogNear, DAY.fogFar));
   const skyColor = useRef(new THREE.Color(DAY.sky));
   const sunColor = useRef(new THREE.Color(DAY.sun));
@@ -79,10 +89,15 @@ export function GlobalAtmosphere() {
 
     if (dirLightRef.current) {
       dirLightRef.current.color.copy(sunColor.current);
-      dirLightRef.current.intensity = THREE.MathUtils.lerp(dirLightRef.current.intensity, 2.6 * lightFactor, damp * 6);
+      dirLightRef.current.intensity = THREE.MathUtils.lerp(dirLightRef.current.intensity, (target.sunIntensity ?? DEFAULT_SUN) * lightFactor, damp * 6);
     }
+    const fill = target.ambient * Math.max(lightFactor, 0.3);
     if (ambientRef.current) {
-      ambientRef.current.intensity = THREE.MathUtils.lerp(ambientRef.current.intensity, target.ambient * Math.max(lightFactor, 0.3), damp);
+      ambientRef.current.intensity = THREE.MathUtils.lerp(ambientRef.current.intensity, fill, damp);
+    }
+    if (hemiRef.current) {
+      // Sky/ground bounce tracks the same fill, or a dark scene would still sit under a bright dome.
+      hemiRef.current.intensity = THREE.MathUtils.lerp(hemiRef.current.intensity, (fill / DAY.ambient) * 0.4, damp);
     }
   });
 
@@ -93,11 +108,11 @@ export function GlobalAtmosphere() {
           instead of the flat, matte look of lighting alone. */}
       <Environment preset="park" resolution={128} background={false} />
       <ambientLight ref={ambientRef} intensity={DAY.ambient} />
-      <hemisphereLight color="#ffffff" groundColor="#5a5548" intensity={0.4} />
+      <hemisphereLight ref={hemiRef} color="#ffffff" groundColor="#5a5548" intensity={0.4} />
       <directionalLight
         ref={dirLightRef}
         position={[10, 16, 8]}
-        intensity={2.6}
+        intensity={DEFAULT_SUN}
         castShadow
         shadow-mapSize={[1024, 1024]}
         shadow-camera-near={1}

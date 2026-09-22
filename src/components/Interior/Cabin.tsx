@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { fabricRoughnessTexture, floorRoughnessTexture } from "../../materials/presets";
+import { createTextTexture } from "../../materials/proceduralTextures";
 import { CabinPassengers, type CabinPassengerConfig } from "../People/Crowds";
 
 export interface CabinTheme {
@@ -123,6 +124,74 @@ function LuggageRack({ side, length, theme }: { side: 1 | -1; length: number; th
   );
 }
 
+export interface InfoScreenSpec {
+  /** The stop the train is running to right now. */
+  next: string;
+  /** Where the service terminates, shown smaller underneath. */
+  destination: string;
+  /** How many stops the route has, and which one is coming up (0-based), for the progress strip. */
+  stops: number;
+  stopIndex: number;
+}
+
+/**
+ * The overhead passenger-information display: next stop, destination, and a strip of route dots with
+ * the stops already passed lit through. This is the visible half of what actually changed in the
+ * 2000s — the train underneath it is much the same, the information around it is not.
+ */
+function InfoScreen({ spec, doorZ }: { spec: InfoScreenSpec; doorZ: number }) {
+  const map = useMemo(
+    () =>
+      createTextTexture({
+        text: spec.next,
+        subText: `to ${spec.destination}`,
+        width: 640,
+        height: 160,
+        background: "#05131c",
+        color: "#dff1ff",
+        subColor: "#79b4d6",
+        scale: 0.42,
+      }),
+    [spec.next, spec.destination],
+  );
+
+  const dots: number[] = [];
+  for (let i = 0; i < spec.stops; i++) dots.push(i);
+
+  return (
+    <group position={[0, CEIL_Y - 0.34, doorZ + 0.09]}>
+      <mesh castShadow>
+        <boxGeometry args={[1.5, 0.42, 0.05]} />
+        <meshStandardMaterial color="#141a1f" metalness={0.4} roughness={0.5} />
+      </mesh>
+      <mesh position={[0, 0.03, 0.028]}>
+        <planeGeometry args={[1.38, 0.26]} />
+        <meshStandardMaterial map={map} emissiveMap={map} emissive="#ffffff" emissiveIntensity={0.9} toneMapped={false} />
+      </mesh>
+      {/* Route progress: a line of stops with the ones behind the train filled in */}
+      <mesh position={[0, -0.14, 0.028]}>
+        <planeGeometry args={[1.2, 0.012]} />
+        <meshStandardMaterial color="#25404f" emissive="#25404f" emissiveIntensity={0.6} toneMapped={false} />
+      </mesh>
+      {dots.map((i) => {
+        const x = -0.6 + (i / Math.max(spec.stops - 1, 1)) * 1.2;
+        const done = i <= spec.stopIndex;
+        return (
+          <mesh key={i} position={[x, -0.14, 0.03]}>
+            <circleGeometry args={[done ? 0.028 : 0.022, 12]} />
+            <meshStandardMaterial
+              color={done ? "#4fe08a" : "#2c4a5c"}
+              emissive={done ? "#4fe08a" : "#2c4a5c"}
+              emissiveIntensity={done ? 1.4 : 0.5}
+              toneMapped={false}
+            />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
 interface CabinProps {
   theme?: CabinTheme;
   length?: number;
@@ -133,6 +202,8 @@ interface CabinProps {
   openFarEnd?: boolean;
   /** Seated (and optionally standing) NPC passengers, dressed for the given era. */
   passengers?: CabinPassengerConfig;
+  /** Overhead next-stop display. Present-day and later stock only — there was nothing like it before. */
+  infoScreen?: InfoScreenSpec;
 }
 
 /**
@@ -147,6 +218,7 @@ export function Cabin({
   doorOpenRef,
   openFarEnd = false,
   passengers,
+  infoScreen,
 }: CabinProps) {
   const doorLRef = useRef<THREE.Mesh>(null);
   const doorRRef = useRef<THREE.Mesh>(null);
@@ -292,6 +364,8 @@ export function Cabin({
       ))}
 
       {passengers && <CabinPassengers {...passengers} seatRows={seatRows} poleZ={doorZ + 0.55} />}
+
+      {infoScreen && <InfoScreen spec={infoScreen} doorZ={doorZ} />}
 
       <LuggageRack side={-1} length={length} theme={theme} />
       <LuggageRack side={1} length={length} theme={theme} />

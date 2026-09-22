@@ -5,7 +5,7 @@ import { timelineStore } from "../../state/timelineStore";
 import type { HairStyle, HatKind, Outfit } from "./npcStyle";
 
 export type NpcPose = "stand" | "sit";
-export type NpcActivity = "idle" | "phone" | "newspaper" | "wave" | "holdPole" | "chat" | "lookWindow";
+export type NpcActivity = "idle" | "phone" | "newspaper" | "wave" | "holdPole" | "chat" | "lookWindow" | "shovel";
 
 /** Written every frame by whatever moves a walking NPC; `walk` blends 0 (idle) .. 1 (full stride). */
 export interface NpcMotion {
@@ -20,6 +20,8 @@ const SEAT_HIP_Y = 0.56;
 const THIGH = 0.43;
 /** Thigh pitch when seated: slightly below horizontal so the shins reach the floor from bench height. */
 const SIT_THIGH = -1.36;
+/** Radians/sec of the shovelling cycle — one dig-and-throw every ~3.3s, the pace of a long shift. */
+const SHOVEL_RATE = 1.9;
 
 const cloth = (color: string, roughness = 0.9) => <meshStandardMaterial color={color} roughness={roughness} />;
 
@@ -208,6 +210,9 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
       if (seated) {
         const lean = activity === "newspaper" || activity === "phone" ? 0.02 : -0.1;
         spine.current.rotation.set(lean, 0, Math.sin(t * 1.1) * 0.012);
+      } else if (activity === "shovel") {
+        // The whole body does the work, not just the arms: a deep bend into the heap, a twist to throw.
+        spine.current.rotation.set(0.46 + Math.sin(t * SHOVEL_RATE) * 0.2, Math.sin(t * SHOVEL_RATE - 0.5) * 0.3, 0);
       } else {
         spine.current.rotation.set(0.05 * walk, Math.sin(stride) * 0.08 * walk, -Math.sin(t * 0.33) * 0.015 * (1 - walk));
       }
@@ -228,6 +233,10 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
         pitch = Math.sin(t * 2.3) * 0.05;
       } else if (activity === "holdPole") {
         pitch = 0.1;
+      } else if (activity === "shovel") {
+        // Eyes on the blade, not on the world.
+        yawHead = Math.sin(t * SHOVEL_RATE - 0.5) * -0.2;
+        pitch = 0.3;
       }
       head.current.rotation.set(pitch, yawHead, 0);
     }
@@ -268,6 +277,12 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
         sx = -2.4;
         sz = 0;
         ex = -0.15;
+      } else if (activity === "shovel" && !seated) {
+        // Both hands on the shaft: the lead hand low and forward, the other back by the hip.
+        const swing = Math.sin(t * SHOVEL_RATE);
+        sx = (right ? -1.15 : -0.85) + swing * 0.5;
+        sz = s * 0.26;
+        ex = (right ? -0.45 : -0.95) - Math.max(swing, 0) * 0.45;
       } else if (activity === "chat" && right && !seated) {
         sx = -0.25 + Math.sin(t * 1.3) * 0.1;
         ex = -1.2 + Math.sin(t * 1.7) * 0.25;
@@ -421,6 +436,19 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
                   <sphereGeometry args={[0.045, 10, 8]} />
                   {skin}
                 </mesh>
+                {s > 0 && activity === "shovel" && (
+                  // Held in the lead hand, angled down at the heap the figure is bent over.
+                  <group position={[0, -0.3, 0.02]} rotation={[0.95, 0, 0]}>
+                    <mesh castShadow>
+                      <cylinderGeometry args={[0.018, 0.02, 0.9, 6]} />
+                      <meshStandardMaterial color="#6a5236" roughness={0.9} />
+                    </mesh>
+                    <mesh position={[0, -0.52, 0.02]} rotation={[0.12, 0, 0]} castShadow>
+                      <boxGeometry args={[0.19, 0.25, 0.018]} />
+                      <meshStandardMaterial color="#4a443c" metalness={0.75} roughness={0.45} />
+                    </mesh>
+                  </group>
+                )}
                 {s > 0 && activity === "phone" && (
                   <mesh position={[0, -0.3, 0.03]} rotation={[0.3, 0, 0]}>
                     <boxGeometry args={[0.07, 0.14, 0.012]} />

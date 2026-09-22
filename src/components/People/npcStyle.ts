@@ -1,4 +1,8 @@
-export type NpcEra = "steam" | "diesel" | "electric" | "modern";
+export type NpcEra = "mine" | "steam" | "diesel" | "electric" | "modern";
+
+/** The generations that have a train, and therefore a cabin full of passengers, of their own. The
+ * pit crew of the first stage are dressed by the same wardrobe but never ride in anything. */
+export type TrainNpcEra = Exclude<NpcEra, "mine">;
 export type HatKind = "none" | "topHat" | "bowler" | "flatCap" | "fedora" | "wideBrim" | "beanie" | "baseballCap";
 export type HairStyle = "short" | "long" | "bun" | "bald";
 export type Carry = "none" | "suitcase" | "briefcase" | "backpack";
@@ -58,9 +62,28 @@ interface EraWardrobe {
   headphonesChance: number;
 }
 
-/** Clothing by generation: Victorian/Edwardian travel wear -> 1950s suits and dresses -> 80s-2000s
- * casual -> present-day hoodies, puffers and sneakers. Keeps each train era's crowd period-correct. */
+/** Clothing by generation: pit-bank wool and leather -> Victorian/Edwardian travel wear -> 1950s suits
+ * and dresses -> 80s-2000s casual -> present-day hoodies, puffers and sneakers. Keeps each stage of
+ * the film period-correct. */
 const WARDROBES: Record<NpcEra, EraWardrobe> = {
+  // Pit folk, a century before any of the rest of this: undyed wool and leather, soot into the weave,
+  // a flat cap or a leather hat and nothing else. Women worked the bank sorting coal, in the same cloth.
+  mine: {
+    menTop: ["#3a3028", "#2e2820", "#463a2c", "#332b24"],
+    menBottom: ["#332b22", "#3f342a", "#2a241e"],
+    womenTop: ["#4a3c2e", "#3a3228", "#53422f"],
+    womenBottom: ["#332b22", "#2e2820", "#42372c"],
+    shoes: ["#241c14", "#1a140f"],
+    menHats: ["flatCap", "flatCap", "wideBrim", "none"],
+    womenHats: ["none", "wideBrim"],
+    hatColors: ["#2a231c", "#382e24"],
+    accents: ["#6a5a44", "#8a7a5c", "#5c4a36"],
+    skirtChance: 1,
+    skirtLength: "long",
+    longCoatChance: 0,
+    carries: ["none"],
+    headphonesChance: 0,
+  },
   steam: {
     menTop: ["#2b2622", "#3a2e25", "#1f2530", "#4a3a2a", "#2e1f1f"],
     menBottom: ["#3b352e", "#2a2a2a", "#4b4236"],
@@ -133,7 +156,7 @@ export function makeOutfit(era: NpcEra, rng: () => number): Outfit {
   const female = body === "f";
   const hat = pick(rng, female ? w.womenHats : w.menHats);
   const skirt = female && rng() < w.skirtChance ? w.skirtLength : "none";
-  const hairStyle: HairStyle = female ? pick(rng, era === "steam" ? (["bun"] as const) : (["long", "bun", "short"] as const)) : rng() < 0.12 ? "bald" : "short";
+  const hairStyle: HairStyle = female ? pick(rng, era === "steam" || era === "mine" ? (["bun"] as const) : (["long", "bun", "short"] as const)) : rng() < 0.12 ? "bald" : "short";
   return {
     body,
     height: female ? 0.92 + rng() * 0.06 : 0.97 + rng() * 0.07,

@@ -1,5 +1,5 @@
 export type SceneId =
-  | "preview"
+  | "earlyRail"
   | "boarding"
   | "interior"
   | "departure"
@@ -38,7 +38,7 @@ export const TOTAL_DURATION = 300;
 // and the steam block keeps the longest run because it is the only stage with a whole story — board,
 // ride, arrive — built for it. `designSpan` per scene does the compressing; see `SceneDef`.
 export const SCENES: SceneDef[] = [
-  { id: "preview", title: "EARLY RAILWAYS", start: 0, end: 18, hardCut: false, designSpan: 27 },
+  { id: "earlyRail", title: "EARLY RAILWAYS", start: 0, end: 18, hardCut: false, designSpan: 18 },
   { id: "boarding", title: "THE STEAM ERA", start: 18, end: 42, hardCut: true, designSpan: 35 },
   { id: "interior", title: "ONBOARD", start: 42, end: 54, hardCut: true, designSpan: 18 },
   { id: "departure", title: "DEPARTURE", start: 54, end: 74, hardCut: false, designSpan: 30 },

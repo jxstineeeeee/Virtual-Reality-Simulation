@@ -9,6 +9,10 @@ import { timelineStore } from "../state/timelineStore";
 import { getSceneLocal } from "../timeline/timeline";
 import { rampDistance, rampSpeed } from "./sceneMotion";
 
+/** The next-stop display overhead. Stage 6 is the one generation whose change is mostly information,
+ * so the carriage has to be seen telling the passengers something. */
+const ROUTE_DISPLAY = { next: "CENTRAL", destination: "NORTH TERMINAL", stops: 6, stopIndex: 3 };
+
 const RAMP_SECONDS = 5;
 export const MODERN_CRUISE_SPEED = 17;
 
@@ -35,7 +39,7 @@ export function ModernRideScene() {
   return (
     <>
       <GroundStrip color="#7f8790" />
-      <Cabin theme={MODERN_THEME} doorOpenRef={doorOpenRef} passengers={MODERN_CABIN_PASSENGERS} />
+      <Cabin theme={MODERN_THEME} doorOpenRef={doorOpenRef} passengers={MODERN_CABIN_PASSENGERS} infoScreen={ROUTE_DISPLAY} />
       <BuildingField distanceRef={distanceRef} density={1.4} tall />
       <TreeField distanceRef={distanceRef} density={0.5} />
       <MountainBackdrop distanceRef={distanceRef} density={0.7} />

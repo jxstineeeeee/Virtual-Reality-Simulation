@@ -3,6 +3,7 @@ import { DOOR_CLOSE_END as DEP_DOOR_CLOSE, ACCEL_START as DEP_ACCEL, JERK_ANCHOR
 import { TRAIN_DOOR_CLOSE as FIRST_TRAIN_DOOR_CLOSE, FIRST_ARRIVAL_EXIT_CUT } from "../scenes/ExteriorRideScene";
 import { ARRIVAL_EXIT_CUT } from "../scenes/ArrivalScene";
 import { EVOLUTION_AUDIO_BEATS } from "../scenes/EvolutionScene";
+import { EARLY_RAIL_HOOF_TIMES, PULL_START as HAUL_START } from "../scenes/EarlyRailScene";
 import type { AudioEra } from "./TrainAudioEngine";
 
 export type CueKind =
@@ -15,7 +16,11 @@ export type CueKind =
   /** Slack running out through the couplers. */
   | "coupler"
   /** A carriage door pulled shut. */
-  | "doorThunk";
+  | "doorThunk"
+  /** One shod hoof on the pit bank — the motive power of the first stage. */
+  | "hoof"
+  /** A pick or shovel biting into coal. */
+  | "pick";
 
 export interface AudioCue {
   /** Scene-local seconds. */
@@ -32,10 +37,14 @@ export interface AudioCue {
  * layer, which `AudioDriver` derives from each scene's real motion functions instead.
  */
 const CUES: Partial<Record<SceneId, AudioCue[]>> = {
-  // Scene 1 — waiting on the platform beside a steam loco in steam.
-  preview: [
-    { t: 6, kind: "chime" },
-    { t: 21, kind: "horn" },
+  // Scene 1 — the pit bank. No whistle, no PA, nothing mechanical: the shift filling a wagon, and
+  // then a horse walking it away. The shovel strikes are on `SHOVEL_RATE`, the cycle `Person`
+  // animates the two shovelling figures on, offset so they are not working in lockstep.
+  earlyRail: [
+    ...[0.4, 3.7, 7.0, 10.3, 13.6, 16.9].map((t) => ({ t, kind: "pick" as const })),
+    ...[1.9, 5.2, 8.5, 11.8, 15.1].map((t) => ({ t, kind: "pick" as const })),
+    { t: HAUL_START - 0.4, kind: "coupler" as const },
+    ...EARLY_RAIL_HOOF_TIMES.map((t) => ({ t, kind: "hoof" as const })),
   ],
   // Scene 2 — walking the platform to the carriage door.
   boarding: [

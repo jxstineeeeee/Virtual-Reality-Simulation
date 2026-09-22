@@ -131,6 +131,12 @@ export function AudioDriver() {
         case "doorThunk":
           trainAudio.playDoorThunk();
           break;
+        case "hoof":
+          trainAudio.playHoofbeat();
+          break;
+        case "pick":
+          trainAudio.playPickStrike();
+          break;
       }
     }
 

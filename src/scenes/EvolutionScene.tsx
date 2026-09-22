@@ -20,7 +20,8 @@ import { DieselExhaustEffect } from "../effects/DieselExhaustEffect";
 import { ElectricSparkEffect } from "../effects/ElectricSparkEffect";
 import { SpeedLinesEffect } from "../effects/SpeedLinesEffect";
 import { PlatformCrowd } from "../components/People/Crowds";
-import type { NpcEra } from "../components/People/npcStyle";
+import { DepartureBoard } from "../components/Environment/SmartRail";
+import type { NpcEra, TrainNpcEra } from "../components/People/npcStyle";
 import { timelineStore } from "../state/timelineStore";
 import { getSceneLocal, smootherstep, lerp, clamp01 } from "../timeline/timeline";
 import { getEraAtTime, getGlobalProgress, ERAS, EVOLUTION_DURATION } from "../data/timeline";
@@ -313,7 +314,7 @@ function TrainHandoff({ handoff, DepartTrain, ArriveTrain, DepartEffect, ArriveE
 
 interface EraCabinProps {
   theme: CabinTheme;
-  era: NpcEra;
+  era: TrainNpcEra;
   start: number;
   end: number;
   /** Stay fully visible past `end` instead of fading out (the modern-era cabin persists into "final"). */
@@ -322,7 +323,7 @@ interface EraCabinProps {
 
 /** Cabin-local Z of the seated viewer (`SEAT_POS`) — that aisle seat stays empty. */
 const EVOLUTION_SEAT_Z = [0.4];
-const ERA_DENSITY: Record<NpcEra, number> = { steam: 0.55, diesel: 0.55, electric: 0.65, modern: 0.8 };
+const ERA_DENSITY: Record<TrainNpcEra, number> = { steam: 0.55, diesel: 0.55, electric: 0.65, modern: 0.8 };
 const CABIN_FADE_IN = 1.1;
 const CABIN_FADE_OUT = 0.5;
 
@@ -354,8 +355,50 @@ function EraCabin({ theme, era, start, end, persist = false }: EraCabinProps) {
   );
 }
 
+/**
+ * The high-speed unit the viewer boards is the one that started the whole stage: Japan, 1 October
+ * 1964, ivory and blue, a blunt nose and 210 km/h on track built for nothing else. Declared here at
+ * module level rather than inline so the handoff is not handed a new component type every render.
+ */
+const ShinkansenTrain = (props: { speed: number }) => <ModernTrain {...props} livery="shinkansen" />;
+
 /** The viewer's platform standing spot during handoffs (`PLATFORM_POS` x/z). */
 const HANDOFF_CROWD_AVOID: [number, number][] = [[-2.6, 1.5]];
+
+/**
+ * Platform signage for the high-speed handoff, in the language of the railway that opened it, and
+ * shown only while the viewer is standing on that platform — the two handoffs before it are not in
+ * Japan. Placed down the line in the direction the camera is already looking as the train rolls in.
+ */
+function ShinkansenSignage({ start, end }: { start: number; end: number }) {
+  const groupRef = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const local = getSceneLocal(timelineStore.getElapsed()).local;
+    if (groupRef.current) groupRef.current.visible = local >= start && local < end;
+  });
+  return (
+    <group ref={groupRef} visible={false}>
+      <DepartureBoard
+        position={[-4.2, 0.5, 6]}
+        yaw={2.8}
+        title="ひかり · HIKARI"
+        subtitle="新大阪 SHIN-OSAKA · 210 km/h"
+        width={2.1}
+        background="#0d1622"
+        color="#f2f6fa"
+      />
+      <DepartureBoard
+        position={[-4.4, 0.5, -3.4]}
+        yaw={2.2}
+        title="東京 TOKYO"
+        subtitle="東海道新幹線 · TOKAIDO SHINKANSEN · 1964"
+        width={1.8}
+        background="#12202c"
+        color="#e8f0f6"
+      />
+    </group>
+  );
+}
 
 /** Platform NPCs for one handoff, dressed for the arriving train's era and shown only while the
  * viewer is standing on the platform for that handoff. */
@@ -416,10 +459,11 @@ export function EvolutionScene() {
       <EvolutionStation />
       <TrainHandoff handoff={H1} DepartTrain={SteamTrain} ArriveTrain={DieselTrain} DepartEffect={SteamEffect} ArriveEffect={DieselExhaustEffect} />
       <TrainHandoff handoff={H2} DepartTrain={DieselTrain} ArriveTrain={ElectricTrain} DepartEffect={DieselExhaustEffect} ArriveEffect={ElectricSparkEffect} />
-      <TrainHandoff handoff={H3} DepartTrain={ElectricTrain} ArriveTrain={ModernTrain} DepartEffect={ElectricSparkEffect} ArriveEffect={ElectricSparkEffect} />
+      <TrainHandoff handoff={H3} DepartTrain={ElectricTrain} ArriveTrain={ShinkansenTrain} DepartEffect={ElectricSparkEffect} ArriveEffect={ElectricSparkEffect} />
       <HandoffCrowd start={H1.start} end={H1.end} era="diesel" seed={71} />
       <HandoffCrowd start={H2.start} end={H2.end} era="electric" seed={72} />
       <HandoffCrowd start={H3.start} end={H3.end} era="modern" seed={73} />
+      <ShinkansenSignage start={H3.start} end={H3.end} />
       <EvolutionWindowView />
       <EraCabin theme={DIESEL_THEME} era="diesel" start={H1.end} end={H2.start} />
       <EraCabin theme={CLASSIC_THEME} era="electric" start={H2.end} end={H3.start} />

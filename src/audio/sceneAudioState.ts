@@ -2,6 +2,7 @@ import type { SceneId } from "../timeline/timeline";
 import { clamp01 } from "../timeline/timeline";
 import { journeyDistance } from "../scenes/JourneyScene";
 import { departureTrainZ } from "../scenes/DepartureScene";
+import { wagonDistance, PULL_START as EARLY_RAIL_PULL_START } from "../scenes/EarlyRailScene";
 import { firstArrivalSpeed, FIRST_ARRIVAL_EXIT_CUT } from "../scenes/ExteriorRideScene";
 import { modernRideSpeed } from "../scenes/ModernRideScene";
 import { arrivalSpeed, ARRIVAL_EXIT_CUT } from "../scenes/ArrivalScene";
@@ -18,13 +19,15 @@ export const SPEED_FN: Partial<Record<SceneId, (local: number) => number>> = {
 /** Scenes whose motion is only expressed as a position/Z function — the audio driver differentiates
  * this against the previous frame's value rather than duplicating each scene's motion model. */
 export const POSITION_FN: Partial<Record<SceneId, (local: number) => number>> = {
+  // The wagon has no engine at all, so this is the whole of its continuous sound: the rumble and
+  // rail-joint knock of timber wheels on timber rail, taken from how far it has actually rolled.
+  earlyRail: wagonDistance,
   departure: departureTrainZ,
   journey: journeyDistance,
 };
 
 export const SCENE_ERA: Partial<Record<SceneId, AudioEra>> = {
   // The steam loco is standing on screen in both, simmering — "idle" would silence it entirely.
-  preview: "steam",
   boarding: "steam",
   interior: "steam",
   departure: "steam",
@@ -60,8 +63,9 @@ export function isInterior(scene: SceneId, local: number): boolean {
 /** 0..1 how much station crowd should be audible — i.e. whether `PlatformCrowd` is on screen. */
 export function crowdLevel(scene: SceneId, local: number): number {
   switch (scene) {
-    case "preview":
-      return 0.5;
+    // The shift on the bank, heard over the workings rather than a station concourse.
+    case "earlyRail":
+      return 0.3;
     case "boarding":
       return 0.55;
     // Heard through the window, fading out as the platform falls behind.
@@ -81,6 +85,9 @@ export function crowdLevel(scene: SceneId, local: number): number {
 /** Whether the viewer is walking rather than seated — gates footsteps onto the scenes that have them. */
 export function isOnFoot(scene: SceneId, local: number): boolean {
   switch (scene) {
+    // Standing and watching until the wagon moves, then walking it down the line.
+    case "earlyRail":
+      return local >= EARLY_RAIL_PULL_START;
     case "boarding":
       return true;
     case "exteriorRide":

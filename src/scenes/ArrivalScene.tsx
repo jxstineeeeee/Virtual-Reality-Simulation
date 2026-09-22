@@ -3,7 +3,9 @@ import { useFrame } from "@react-three/fiber";
 import type * as THREE from "three";
 import { StationBackdrop } from "../components/Environment/StationBackdrop";
 import { Cabin, MODERN_THEME } from "../components/Interior/Cabin";
-import { GroundStrip, TreeField, BuildingField, MountainBackdrop } from "../components/Environment/Biomes";
+import { GroundStrip, TreeField, MountainBackdrop } from "../components/Environment/Biomes";
+import { GreenCity, SolarField, WindFarm } from "../components/Environment/RenewableFields";
+import { TicketGates, DepartureBoard } from "../components/Environment/SmartRail";
 import { ModernTrain } from "../components/Train/ModernTrain";
 import { PlatformCrowd } from "../components/People/Crowds";
 import { MODERN_CABIN_PASSENGERS } from "./npcCasting";
@@ -15,6 +17,9 @@ import { timelineStore } from "../state/timelineStore";
 import { getSceneLocal, clamp01, lerp, smootherstep } from "../timeline/timeline";
 import { decelDistance, decelSpeed } from "./sceneMotion";
 import { MODERN_CRUISE_SPEED } from "./ModernRideScene";
+
+/** Same display as the ride before it, now on its last stop — the route strip fully lit through. */
+const ARRIVING_DISPLAY = { next: "NORTH TERMINAL", destination: "this train terminates here", stops: 6, stopIndex: 5 };
 
 const DECEL_SECONDS = 10;
 const CREEP_START = 10;
@@ -67,6 +72,7 @@ export function ArrivalScene() {
   const doorOpenRef = useRef(0);
   const trainDoorRef = useRef<DoorState>({ open: 0, highlight: 0 });
   const cabinGroupRef = useRef<THREE.Group>(null!);
+  const staticDistance = useRef(0);
   const [showExterior, setShowExterior] = useState(false);
 
   useFrame(() => {
@@ -84,21 +90,32 @@ export function ArrivalScene() {
     <>
       {!showExterior && (
         <>
-          <GroundStrip color="#82898f" />
-          <BuildingField distanceRef={distanceRef} density={1} tall />
+          <GroundStrip color="#7d8a74" />
+          {/* Stage 7 out of the window: planted roofs and panelled facades close in, trackside solar
+              on the embankment, and a wind farm turning on the skyline behind all of it. */}
+          <GreenCity distanceRef={distanceRef} density={1} />
+          <SolarField distanceRef={distanceRef} />
           <TreeField distanceRef={distanceRef} density={0.4} />
+          <WindFarm distanceRef={distanceRef} />
           <MountainBackdrop distanceRef={distanceRef} density={0.6} />
           <group ref={cabinGroupRef}>
-            <Cabin theme={MODERN_THEME} doorOpenRef={doorOpenRef} passengers={MODERN_CABIN_PASSENGERS} />
+            <Cabin theme={MODERN_THEME} doorOpenRef={doorOpenRef} passengers={MODERN_CABIN_PASSENGERS} infoScreen={ARRIVING_DISPLAY} />
           </group>
         </>
       )}
       {showExterior && (
         <>
           <StationBackdrop progress={0.75} />
+          {/* The same turbines the viewer watched from the window, now standing on the skyline behind
+              the destination. `staticDistance` never advances, so this field does not scroll. */}
+          <WindFarm distanceRef={staticDistance} count={3} />
+          {/* The station half of stage 7: an automatic gateline with a wide accessible lane, and a
+              live board. Placed off the platform edge so the closing pull-back takes them in. */}
+          <TicketGates position={[-9.2, 0, 2.6]} />
+          <DepartureBoard position={[-5.4, 0.5, 6.4]} yaw={1.35} title="14:22  NORTH TERMINAL" subtitle="Platform 1 · automatic service · on time" />
           <PlatformCrowd era="modern" seed={61} density={0.85} avoid={ARRIVAL_PLATFORM_AVOID} />
           <group position={[0, 0, trainRestZ("modern")]}>
-            <ModernTrain speed={0.1} />
+            <ModernTrain speed={0.1} autonomous />
             <BoardingDoorway spec={DOOR} stateRef={trainDoorRef} swingToward={1} />
           </group>
         </>

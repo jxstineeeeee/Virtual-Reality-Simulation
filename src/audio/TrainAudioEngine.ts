@@ -346,7 +346,9 @@ export class TrainAudioEngine {
     this.engineOsc2?.frequency.setTargetAtTime(pitch * 1.5, t, 0.4);
     if (this.engineOsc) this.engineOsc.type = era === "electric" || era === "modern" ? "sine" : "sawtooth";
     this.engineFilter.frequency.setTargetAtTime(200 + speedN * 900, t, 0.5);
-    const engineLevel = (moving ? 0.2 + speedN * 0.24 : era === "idle" ? 0 : 0.1) * (interior ? 0.7 : 1);
+    // "idle" means there is no motive power at all — a horse-hauled wagon still has rolling stock
+    // noise (below) but must never hum, whether it is moving or standing.
+    const engineLevel = (era === "idle" ? 0 : moving ? 0.2 + speedN * 0.24 : 0.1) * (interior ? 0.7 : 1);
     this.engineGain.gain.setTargetAtTime(engineLevel, t, 0.3);
 
     this.noiseFilter.frequency.setTargetAtTime(era === "steam" ? 1600 : 900, t, 0.5);
@@ -636,6 +638,50 @@ export class TrainAudioEngine {
   }
 
   /** A single footfall — `hollow` for the wooden footboard/carriage floor, otherwise stone platform. */
+  /**
+   * A shod hoof coming down on packed dirt: a soft low thud with a short, harder click of iron on
+   * stone riding on it. Deliberately varied per call, because a horse at a walk is never metronomic.
+   */
+  playHoofbeat() {
+    const ctx = this.ctx;
+    if (!this.audible || !ctx || !this.outsideFilter) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(120 + Math.random() * 30, t);
+    osc.frequency.exponentialRampToValueAtTime(48, t + 0.09);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.linearRampToValueAtTime(0.16 + Math.random() * 0.05, t + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    osc.connect(gain);
+    gain.connect(this.outsideFilter);
+    osc.start(t);
+    osc.stop(t + 0.21);
+    this.noiseBurst(0.05, 0.07, this.makeFilter("bandpass", 2600, 1.6), this.outsideFilter);
+  }
+
+  /** A pick biting into coal at the bank — a hard metallic strike with a gritty tail. */
+  playPickStrike() {
+    const ctx = this.ctx;
+    if (!this.audible || !ctx || !this.outsideFilter) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(1500 + Math.random() * 500, t);
+    osc.frequency.exponentialRampToValueAtTime(420, t + 0.07);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.linearRampToValueAtTime(0.1, t + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    osc.connect(gain);
+    gain.connect(this.outsideFilter);
+    osc.start(t);
+    osc.stop(t + 0.17);
+    // The coal itself: loose lumps sliding off the blade.
+    this.noiseBurst(0.3, 0.09, this.makeFilter("bandpass", 3800, 0.8), this.outsideFilter);
+  }
+
   playFootstep(hollow = false) {
     if (!this.audible || !this.master) return;
     const filter = this.makeFilter("lowpass", hollow ? 420 : 900, 1.4);

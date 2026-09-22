@@ -7,7 +7,7 @@ import { CameraDirector } from "../components/Camera/CameraDirector";
 import { PostFX } from "../effects/PostFX";
 import { AudioDriver } from "../audio/AudioDriver";
 import { NarrationDriver } from "../audio/NarrationDriver";
-import { PreviewScene } from "./PreviewScene";
+import { EarlyRailScene } from "./EarlyRailScene";
 import { BoardingScene } from "./BoardingScene";
 import { InteriorScene } from "./InteriorScene";
 import { DepartureScene } from "./DepartureScene";
@@ -25,7 +25,7 @@ function TimelineDriver() {
 }
 
 const SCENE_COMPONENTS: Record<SceneId, React.ComponentType> = {
-  preview: PreviewScene,
+  earlyRail: EarlyRailScene,
   boarding: BoardingScene,
   interior: InteriorScene,
   departure: DepartureScene,
@@ -38,7 +38,7 @@ const SCENE_COMPONENTS: Record<SceneId, React.ComponentType> = {
 
 /**
  * Mounts only the currently active scene's geometry, so idle scenes cost nothing. Re-renders only
- * on an actual scene change (a handful of times over 8 minutes), not every tick of the clock.
+ * on an actual scene change (a handful of times over the five minutes), not every tick of the clock.
  */
 function ActiveScene() {
   const [sceneId, setSceneId] = useState<SceneId>(() => getSceneAt(timelineStore.getElapsed()).id);
@@ -52,7 +52,7 @@ function ActiveScene() {
   return <Scene />;
 }
 
-/** Root 3D content for the full ~8-minute Train Evolution cinematic. */
+/** Root 3D content for the full five-minute Train Evolution cinematic. */
 export function Experience() {
   return (
     <>

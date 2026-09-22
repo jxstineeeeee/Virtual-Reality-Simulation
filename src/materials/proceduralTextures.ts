@@ -96,6 +96,80 @@ export function createStreakTexture({
   return texture;
 }
 
+const FONT_STACK = `"Segoe UI", system-ui, "Yu Gothic UI", "Meiryo", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif`;
+
+interface TextOptions {
+  text: string;
+  /** Second, smaller line under the first — a destination under a service name, a reading under a label. */
+  subText?: string;
+  width?: number;
+  height?: number;
+  background?: string;
+  color?: string;
+  subColor?: string;
+  /** Fraction of the canvas height the main line is set at. */
+  scale?: number;
+  align?: CanvasTextAlign;
+  /** Draw a hairline border, as a lit display panel has against its bezel. */
+  border?: string;
+  /**
+   * CSS font-family stack. The default carries Japanese faces after the Latin ones, because the
+   * 1964 platform boards are set in kana and kanji and a missing face renders as empty boxes.
+   */
+  font?: string;
+}
+
+/**
+ * A canvas texture carrying actual legible text — station name boards, in-carriage passenger
+ * information, gate indicators. The scene is otherwise entirely geometry, and signage is the one
+ * thing geometry cannot fake: a sign with no words on it reads as a blank rectangle.
+ */
+export function createTextTexture({
+  text,
+  subText,
+  width = 512,
+  height = 128,
+  background = "#0b1016",
+  color = "#eaf4ff",
+  subColor = "#8fb6cc",
+  scale = 0.46,
+  align = "center",
+  border,
+  font = FONT_STACK,
+}: TextOptions): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, width, height);
+  if (border) {
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(1.5, 1.5, width - 3, height - 3);
+  }
+
+  const x = align === "left" ? width * 0.05 : align === "right" ? width * 0.95 : width / 2;
+  ctx.textAlign = align;
+  ctx.textBaseline = "middle";
+
+  const mainSize = height * scale;
+  ctx.font = `600 ${mainSize}px ${font}`;
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, subText ? height * 0.36 : height / 2, width * 0.92);
+
+  if (subText) {
+    ctx.font = `400 ${height * scale * 0.62}px ${font}`;
+    ctx.fillStyle = subColor;
+    ctx.fillText(subText, x, height * 0.72, width * 0.92);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
 const cache = new Map<string, THREE.CanvasTexture>();
 
 /** Memoized accessor so repeated calls (e.g. across re-renders) share one GPU texture. */
