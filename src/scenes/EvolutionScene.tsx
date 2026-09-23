@@ -23,6 +23,8 @@ import { PlatformCrowd } from "../components/People/Crowds";
 import { DepartureBoard } from "../components/Environment/SmartRail";
 import type { NpcEra, TrainNpcEra } from "../components/People/npcStyle";
 import { timelineStore } from "../state/timelineStore";
+import { skyState } from "../state/skyState";
+import { quality } from "../effects/renderQuality";
 import { getSceneLocal, smootherstep, lerp, clamp01 } from "../timeline/timeline";
 import { getEraAtTime, getGlobalProgress, ERAS, EVOLUTION_DURATION } from "../data/timeline";
 import { applyOpacity } from "../utils/fade";
@@ -164,6 +166,11 @@ const SKY_START = new THREE.Color("#9a8b74");
 const SKY_END = new THREE.Color("#bcd9f0");
 const SUN_START = new THREE.Color("#ffcf8a");
 const SUN_END = new THREE.Color("#fff6e8");
+/** Overhead: a smoke-flattened industrial ceiling that opens into clean blue as the eras pass. */
+const ZENITH_START = new THREE.Color("#57534c");
+const ZENITH_END = new THREE.Color("#4d8ccc");
+/** Matches this scene's own key light, which sits lower than the global one. */
+const EVOLUTION_SUN = new THREE.Vector3(10, 14, 6).normalize();
 
 /** Sky/fog/lighting continuously evolve from a hazy industrial dusk (steam) to a clean modern day —
  * visible through the cabin windows and during the platform handoffs alike. */
@@ -186,8 +193,17 @@ function EvolutionAtmosphere() {
     const local = getSceneLocal(timelineStore.getElapsed()).local;
     const p = getGlobalProgress(local);
     skyColor.current.lerpColors(SKY_START, SKY_END, p);
-    scene.background = skyColor.current;
     fogRef.current.color.copy(skyColor.current);
+
+    // The sky is published rather than painted: `SkyDome` draws it and bakes the reflection probe
+    // from it, so two minutes of industrial haze clearing carries into the cloud cover and into
+    // every reflection on the trains, instead of only into the fog.
+    skyState.horizon.copy(skyColor.current);
+    skyState.zenith.lerpColors(ZENITH_START, ZENITH_END, p);
+    skyState.sun.lerpColors(SUN_START, SUN_END, p);
+    skyState.sunDirection.copy(EVOLUTION_SUN);
+    skyState.cloudCover = THREE.MathUtils.lerp(0.86, 0.3, p);
+    skyState.dim = 1;
     fogRef.current.near = THREE.MathUtils.lerp(9, 24, p);
     fogRef.current.far = THREE.MathUtils.lerp(38, 95, p);
 
@@ -197,7 +213,10 @@ function EvolutionAtmosphere() {
     }
     if (ambientRef.current) ambientRef.current.intensity = THREE.MathUtils.lerp(0.42, 0.58, p);
     if (hemiRef.current) {
-      hemiRef.current.groundColor.copy(skyColor.current);
+      // The sky half tracks the sky, which is the way round this was not: it used to tint the
+      // *ground* bounce with the sky colour, so the fill came up off the earth in whatever colour
+      // the clouds were and down from a permanently white dome.
+      hemiRef.current.color.copy(skyColor.current);
       hemiRef.current.intensity = THREE.MathUtils.lerp(0.38, 0.55, p);
     }
   });
@@ -205,20 +224,27 @@ function EvolutionAtmosphere() {
   return (
     <>
       <ambientLight ref={ambientRef} intensity={0.42} />
-      <hemisphereLight ref={hemiRef} color="#ffffff" groundColor="#4a3f2f" intensity={0.38} />
+      <hemisphereLight ref={hemiRef} color="#9a8b74" groundColor="#4a3f2f" intensity={0.38} />
+      {/* This scene is two of the film's five minutes and was running on a hardcoded 1024 shadow
+          map — a quarter of the texel density the rest of the film gets on the same machine. It
+          now takes the same budget as everything else, and the same `shadow-radius` softening and
+          `normalBias` that let the bias be cut from -0.0015 to a figure that does not detach a
+          shadow from the thing casting it. */}
       <directionalLight
         ref={dirLightRef}
         position={[10, 14, 6]}
         intensity={2.3}
         castShadow
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[quality.shadowMapSize, quality.shadowMapSize]}
         shadow-camera-near={1}
         shadow-camera-far={60}
         shadow-camera-left={-25}
         shadow-camera-right={25}
         shadow-camera-top={25}
         shadow-camera-bottom={-25}
-        shadow-bias={-0.0015}
+        shadow-radius={5}
+        shadow-bias={-0.0006}
+        shadow-normalBias={0.02}
       />
     </>
   );

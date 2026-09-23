@@ -48,7 +48,7 @@ export function createSpeckleTexture(options: SpeckleOptions = {}): THREE.Canvas
 }
 
 /** Wraps a pattern canvas as a repeating texture, tagged sRGB only when it carries colour. */
-function tileable(canvas: HTMLCanvasElement, isColor: boolean): THREE.CanvasTexture {
+export function tileable(canvas: HTMLCanvasElement, isColor: boolean): THREE.CanvasTexture {
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;

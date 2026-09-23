@@ -7,6 +7,8 @@ interface Instance {
   zSeed: number;
   y: number;
   scale: number;
+  /** Extra vertical multiplier on top of the uniform scale, so a field can hold tall thin things. */
+  stretch: number;
   rot: number;
   /** 0..1 seed for this instance's colour offset. */
   tint: number;
@@ -25,6 +27,14 @@ interface ScrollFieldProps {
   /** Base height multiplied by each instance's scale, so geometry authored with its base at y=0 sits on the ground. */
   yBase?: number;
   scaleRange?: [number, number];
+  /**
+   * Vertical stretch applied on top of the uniform scale.
+   *
+   * Without it every prop scales uniformly, which means a "tall" building is also a very wide one:
+   * a block, not a tower. Separating the two is what gives a skyline a range of proportions rather
+   * than merely a range of sizes.
+   */
+  stretchRange?: [number, number];
   castShadow?: boolean;
   /**
    * Per-instance brightness spread (0 = every instance identical). A field of trees or buildings in
@@ -48,6 +58,7 @@ export function ScrollField({
   parallax = 1,
   yBase = 0,
   scaleRange = [0.8, 1.3],
+  stretchRange = [1, 1],
   castShadow = true,
   colorJitter = 0.16,
   children,
@@ -60,11 +71,13 @@ export function ScrollField({
     const arr: Instance[] = [];
     for (let i = 0; i < count; i++) {
       const scale = THREE.MathUtils.lerp(scaleRange[0], scaleRange[1], Math.random());
+      const stretch = THREE.MathUtils.lerp(stretchRange[0], stretchRange[1], Math.random());
       arr.push({
         x: THREE.MathUtils.lerp(xRange[0], xRange[1], Math.random()),
         zSeed: Math.random() * cycleLength,
-        y: yBase * scale,
+        y: yBase * scale * stretch,
         scale,
+        stretch,
         rot: Math.random() * Math.PI * 2,
         tint: Math.random(),
       });
@@ -99,7 +112,7 @@ export function ScrollField({
       if (z > half) z -= cycleLength;
       dummy.position.set(inst.x, inst.y, z);
       dummy.rotation.set(0, inst.rot, 0);
-      dummy.scale.setScalar(inst.scale);
+      dummy.scale.set(inst.scale, inst.scale * inst.stretch, inst.scale);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     }

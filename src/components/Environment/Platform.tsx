@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { concreteNormalTexture, concreteTexture } from "../../materials/presets";
+import { concreteAoTexture, concreteNormalTexture, concreteTexture } from "../../materials/presets";
 import { useDetailMap } from "../../materials/useDetailMap";
 
 const SURFACE_START = new THREE.Color("#9a876a");
@@ -25,6 +25,7 @@ export function Platform({ progressRef }: PlatformProps) {
 
   const surfaceMap = useDetailMap(concreteTexture, 2, 18);
   const surfaceNormalMap = useDetailMap(concreteNormalTexture, 2, 18);
+  const surfaceAoMap = useDetailMap(concreteAoTexture, 2, 18);
 
   useFrame(() => {
     const p = progressRef.current;
@@ -43,7 +44,16 @@ export function Platform({ progressRef }: PlatformProps) {
     <group position={[-4.4, 0, 2]}>
       <mesh position={[0, 0.25, 0]} castShadow receiveShadow>
         <boxGeometry args={[2.4, 0.5, 22]} />
-        <meshStandardMaterial ref={surfaceMatRef} color={SURFACE_START} map={surfaceMap} normalMap={surfaceNormalMap} normalScale={CONCRETE_RELIEF} roughness={0.88} />
+        <meshStandardMaterial
+          ref={surfaceMatRef}
+          color={SURFACE_START}
+          map={surfaceMap}
+          normalMap={surfaceNormalMap}
+          normalScale={CONCRETE_RELIEF}
+          aoMap={surfaceAoMap}
+          aoMapIntensity={0.55}
+          roughness={0.88}
+        />
       </mesh>
       <mesh position={[1.15, 0.51, 0]}>
         <boxGeometry args={[0.15, 0.02, 22]} />

@@ -1,11 +1,23 @@
 import { ScrollField } from "./ScrollField";
-import { groundColorTexture, groundNormalTexture, groundRoughnessTexture } from "../../materials/presets";
+import { broadleafGeometry, coniferGeometry, hillGeometry, ridgeGeometry } from "./naturalGeometry";
+import {
+  cropFurrowNormalTexture,
+  cropFurrowTexture,
+  facadeEmissiveTexture,
+  facadeTexture,
+  groundAoTexture,
+  groundColorTexture,
+  groundNormalTexture,
+  groundRoughnessTexture,
+} from "../../materials/presets";
 import { useDetailMap } from "../../materials/useDetailMap";
 
 import * as THREE from "three";
 
 /** Open terrain seen mostly at a grazing angle, so the relief reads long rather than deep. */
 const TERRAIN_RELIEF = new THREE.Vector2(0.8, 0.8);
+/** Ploughed ground: the furrows are the whole read, so they get more relief than the terrain does. */
+const FURROW_RELIEF = new THREE.Vector2(1.1, 1.1);
 
 interface BiomeProps {
   distanceRef: React.MutableRefObject<number>;
@@ -24,45 +36,84 @@ function sides(side: "both" | "left" | "right", near: number, far: number): [num
 /**
  * The terrain the ride scenes run over. This single plane fills the bottom half of the frame for
  * most of the film, so leaving it as an untextured fill was the largest flat surface in the project
- * — it now carries the same grain, roughness break-up and relief as the trackside ground.
+ * — it now carries the same grain, roughness break-up, relief and contact occlusion as the
+ * trackside ground.
  */
 export function GroundStrip({ color, width = 200 }: { color: string; width?: number }) {
   const map = useDetailMap(groundColorTexture, 26, 52);
   const roughMap = useDetailMap(groundRoughnessTexture, 26, 52);
   const normalMap = useDetailMap(groundNormalTexture, 26, 52);
+  const aoMap = useDetailMap(groundAoTexture, 26, 52);
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
       <planeGeometry args={[width, 400]} />
-      <meshStandardMaterial color={color} map={map} roughnessMap={roughMap} normalMap={normalMap} normalScale={TERRAIN_RELIEF} roughness={0.95} />
+      <meshStandardMaterial
+        color={color}
+        map={map}
+        roughnessMap={roughMap}
+        normalMap={normalMap}
+        normalScale={TERRAIN_RELIEF}
+        aoMap={aoMap}
+        aoMapIntensity={0.6}
+        roughness={0.95}
+      />
     </mesh>
   );
 }
 
-/** Conical trees scattered both sides of the track. */
+/**
+ * Trees both sides of the track — spruce and broadleaf in roughly equal number.
+ *
+ * Two species rather than one is most of the improvement here. A line of identical silhouettes
+ * scrolling past is the clearest possible sign of an instanced field, and no amount of per-instance
+ * colour jitter hides it; two shapes interleaved at different scales reads as woodland.
+ */
 export function TreeField({ distanceRef, side = "both", density = 1 }: BiomeProps) {
   return (
     <>
       {sides(side, 6, 20).map((xRange) => (
-        <ScrollField
-          key={xRange.join()}
-          count={Math.round(26 * density)}
-          cycleLength={70}
-          xRange={xRange}
-          distanceRef={distanceRef}
-          yBase={1.1}
-          scaleRange={[0.7, 1.5]}
-        >
-          <coneGeometry args={[1.0, 2.4, 8]} />
-          <meshStandardMaterial color="#3d5a34" roughness={0.85} />
-        </ScrollField>
+        <group key={xRange.join()}>
+          <ScrollField
+            count={Math.round(16 * density)}
+            cycleLength={70}
+            xRange={xRange}
+            distanceRef={distanceRef}
+            yBase={0}
+            scaleRange={[0.8, 1.7]}
+          >
+            <primitive object={coniferGeometry()} attach="geometry" />
+            <meshStandardMaterial vertexColors roughness={0.85} />
+          </ScrollField>
+          <ScrollField
+            count={Math.round(12 * density)}
+            cycleLength={83}
+            xRange={xRange}
+            distanceRef={distanceRef}
+            yBase={0}
+            scaleRange={[0.9, 1.8]}
+          >
+            <primitive object={broadleafGeometry()} attach="geometry" />
+            <meshStandardMaterial vertexColors roughness={0.88} />
+          </ScrollField>
+        </group>
       ))}
     </>
   );
 }
 
-/** Boxy buildings of varied size for a town/city backdrop. */
+/**
+ * Buildings of varied size and proportion for a town or city backdrop.
+ *
+ * Two things changed here and both were doing the same damage. The boxes were untextured, so they
+ * had no scale — nothing said whether one was a shed or a tower block. And they were scaled
+ * uniformly, so a "tall" building was also an enormously wide one. Windows fix the first; a
+ * separate vertical stretch fixes the second, which is what lets a skyline have a profile.
+ */
 export function BuildingField({ distanceRef, side = "both", density = 1, tall = false }: BiomeProps & { tall?: boolean }) {
-  const scaleRange: [number, number] = tall ? [2.5, 7] : [1.2, 3];
+  const facade = useDetailMap(() => facadeTexture(tall), 1, 1, 8, tall ? "tall" : "low");
+  const lit = useDetailMap(() => facadeEmissiveTexture(tall), 1, 1, 8, tall ? "tall" : "low");
+  const scaleRange: [number, number] = tall ? [2.2, 3.6] : [1.2, 3];
+  const stretchRange: [number, number] = tall ? [2.2, 6] : [0.9, 1.6];
   return (
     <>
       {sides(side, 9, 30).map((xRange) => (
@@ -74,10 +125,20 @@ export function BuildingField({ distanceRef, side = "both", density = 1, tall = 
           distanceRef={distanceRef}
           yBase={0.5}
           scaleRange={scaleRange}
+          stretchRange={stretchRange}
           parallax={0.9}
         >
           <boxGeometry args={[2, 1, 2]} />
-          <meshStandardMaterial color={tall ? "#8892a0" : "#a89a7e"} roughness={0.8} />
+          {/* The lit windows are an emissive map rather than part of the colour, so they hold up as
+              the light goes: washed out at midday, and the thing that makes the town read at dusk. */}
+          <meshStandardMaterial
+            color={tall ? "#8892a0" : "#a89a7e"}
+            map={facade}
+            emissive="#ffca7a"
+            emissiveMap={lit}
+            emissiveIntensity={0.9}
+            roughness={0.8}
+          />
         </ScrollField>
       ))}
     </>
@@ -95,13 +156,14 @@ export function HillField({ distanceRef, side = "both", density = 1 }: BiomeProp
           cycleLength={120}
           xRange={xRange}
           distanceRef={distanceRef}
-          yBase={-0.3}
+          yBase={0}
           scaleRange={[6, 14]}
+          stretchRange={[0.7, 1.3]}
           parallax={0.5}
           castShadow={false}
         >
-          <sphereGeometry args={[1, 12, 8]} />
-          <meshStandardMaterial color="#6f8a5c" roughness={0.95} />
+          <primitive object={hillGeometry()} attach="geometry" />
+          <meshStandardMaterial vertexColors roughness={0.95} />
         </ScrollField>
       ))}
     </>
@@ -119,13 +181,15 @@ export function MountainBackdrop({ distanceRef, side = "both", density = 1 }: Bi
           cycleLength={160}
           xRange={xRange}
           distanceRef={distanceRef}
-          yBase={-1}
+          yBase={0}
           scaleRange={[16, 26]}
+          stretchRange={[0.8, 1.45]}
           parallax={0.25}
           castShadow={false}
+          colorJitter={0.1}
         >
-          <coneGeometry args={[1, 1.6, 4]} />
-          <meshStandardMaterial color="#7c8a96" roughness={1} />
+          <primitive object={ridgeGeometry()} attach="geometry" />
+          <meshStandardMaterial vertexColors roughness={1} />
         </ScrollField>
       ))}
     </>
@@ -134,6 +198,8 @@ export function MountainBackdrop({ distanceRef, side = "both", density = 1 }: Bi
 
 /** Flattened crop-field patches for open countryside. */
 export function FieldPatches({ distanceRef, side = "both", density = 1 }: BiomeProps) {
+  const furrowRough = useDetailMap(cropFurrowTexture, 1, 1);
+  const furrowNormal = useDetailMap(cropFurrowNormalTexture, 1, 1);
   return (
     <>
       {sides(side, 8, 26).map((xRange, i) => (
@@ -148,7 +214,16 @@ export function FieldPatches({ distanceRef, side = "both", density = 1 }: BiomeP
           castShadow={false}
         >
           <boxGeometry args={[3.5, 0.04, 3.5]} />
-          <meshStandardMaterial color={i % 2 === 0 ? "#c9b45a" : "#8faa4f"} roughness={1} />
+          {/* Drill rows. A field is never one flat colour from the air or from a train window — the
+              furrows catch the low sun along their length, which is what makes a patch read as
+              cultivated ground rather than as a green mat laid on the landscape. */}
+          <meshStandardMaterial
+            color={i % 2 === 0 ? "#c9b45a" : "#8faa4f"}
+            roughnessMap={furrowRough}
+            normalMap={furrowNormal}
+            normalScale={FURROW_RELIEF}
+            roughness={1}
+          />
         </ScrollField>
       ))}
     </>

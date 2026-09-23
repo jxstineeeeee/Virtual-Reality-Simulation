@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { timelineStore } from "../state/timelineStore";
 import { getSceneAt } from "../timeline/timeline";
 import { GlobalAtmosphere } from "../components/Environment/GlobalAtmosphere";
+import { SkyDome } from "../components/Environment/SkyDome";
 import { CameraDirector } from "../components/Camera/CameraDirector";
 import { PostFX } from "../effects/PostFX";
 import { AudioDriver } from "../audio/AudioDriver";
@@ -57,6 +58,9 @@ export function Experience() {
   return (
     <>
       <TimelineDriver />
+      {/* Mounted above the scenes, not inside them: the sky and the reflection probe baked from it
+          are continuous across every cut, and whichever atmosphere is active simply describes them. */}
+      <SkyDome />
       <GlobalAtmosphere />
       <CameraDirector />
       <AudioDriver />

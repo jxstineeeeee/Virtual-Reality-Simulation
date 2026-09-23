@@ -37,9 +37,12 @@ function App() {
     <div className={split ? "app-root is-split" : "app-root"}>
       <div className="eye">
         <Canvas
-          // "soft" is PCFSoft: shadow edges that spread with distance from the contact, rather than
-          // the hard stencil-sharp edge that reads as a game.
-          shadows="soft"
+          // Was "soft", which asked for PCFSoftShadowMap — a map type three has since deleted, so
+          // the renderer silently fell back to hard shadows and the film lost the soft contact
+          // edges it was authored with. "percentage" is now the soft one: three r186 filters PCF
+          // with a per-pixel-rotated Vogel disk whose spread comes from each light's
+          // `shadow.radius` (see `GlobalAtmosphere`), which is the control that actually works.
+          shadows="percentage"
           dpr={[1, quality.maxDpr]}
           // The composer owns antialiasing (see `PostFX`), so the canvas must not also pay for it.
           gl={{ antialias: false, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}

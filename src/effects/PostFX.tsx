@@ -18,6 +18,9 @@ import * as THREE from "three";
 import { cameraFocusState } from "../state/cameraFocusState";
 import { quality } from "./renderQuality";
 
+/** Focus this far out and everything past it is sharp — the lens this film is notionally shot on. */
+const HYPERFOCAL = 26;
+
 /** Lateral colour fringing, in screen-space UV. Real glass does this; barely a pixel of it is plenty. */
 const ABERRATION = new THREE.Vector2(0.0005, 0.0004);
 
@@ -34,10 +37,14 @@ function FocusPuller() {
     if (!dof) return;
     const distance = cameraFocusState.distance;
     dof.target = null;
-    // A real lens has more depth of field the further out it focuses; this keeps the near cabin
-    // shots shallow and the long shots down the track mostly sharp, instead of one fixed blur.
+    // A real lens gains depth of field far faster than linearly as it focuses further out: the far
+    // limit is H*d/(H-d), which runs away to infinity as the focus approaches the hyperfocal
+    // distance H. The old rule was linear and capped the sharp zone at 14 m however far the shot
+    // was focused, so every wide landscape came back soft from the middle distance out — sky
+    // included — and read as a tilt-shift miniature of itself. This keeps the cabin shots shallow
+    // and lets anything focused past ~26 m be sharp to the horizon, which is what a real lens does.
     dof.cocMaterial.worldFocusDistance = distance;
-    dof.cocMaterial.worldFocusRange = THREE.MathUtils.clamp(distance * 0.55, 1.2, 14);
+    dof.cocMaterial.worldFocusRange = THREE.MathUtils.clamp((distance * distance) / Math.max(HYPERFOCAL - distance, 0.7), 1.2, 400);
   });
 
   return <DepthOfField ref={dofRef} worldFocusDistance={6} worldFocusRange={3} bokehScale={2.6} resolutionScale={0.5} />;

@@ -1,6 +1,11 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { panelAoTexture, panelNormalTexture, panelRoughnessTexture } from "../../materials/presets";
+import { useDetailMap } from "../../materials/useDetailMap";
+
+/** Beading and rivets stand a few millimetres proud of the paint — no more than that. */
+const PANEL_RELIEF = new THREE.Vector2(0.6, 0.6);
 
 interface WheelProps {
   position: [number, number, number];
@@ -134,30 +139,50 @@ export function Carriage({
   litWindows = true,
   speed = 0,
 }: CarriageProps) {
+  // Two tiles along the car and one up its side, which puts the beading courses at roughly the
+  // spacing a real body has for a car of this length rather than at whatever the texture happens
+  // to be. The ends get the same pattern squashed, which at this scale reads as end panelling.
+  const panelNormal = useDetailMap(panelNormalTexture, 2, 1);
+  const panelRough = useDetailMap(panelRoughnessTexture, 2, 1);
+  const panelAo = useDetailMap(panelAoTexture, 2, 1);
+
   return (
     <group position={position}>
       <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[width, height, length]} />
-        <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} />
+        <meshStandardMaterial
+          color={color}
+          normalMap={panelNormal}
+          normalScale={PANEL_RELIEF}
+          roughnessMap={panelRough}
+          aoMap={panelAo}
+          aoMapIntensity={0.55}
+          metalness={metalness}
+          roughness={roughness}
+        />
       </mesh>
+      {/* The window band is a shell wrapped around a solid body, so there is nothing behind it to
+          see through — and transmission against an opaque box just tinted the paint, which is why
+          this read as a stripe painted along the car rather than as glazing. From outside, in
+          daylight, a train window is a mirror: dark glass returning the sky. So it is now a
+          near-black, very smooth surface with the reflection probe doing the work, which is both
+          what it actually looks like and cheaper than the transmission pass it replaces. */}
       <mesh position={[0, height * 0.62, 0]}>
         <boxGeometry args={[width + 0.03, height * 0.28, length * 0.86]} />
         <meshPhysicalMaterial
-          color={windowColor}
-          roughness={0.05}
-          metalness={0}
-          transmission={0.85}
-          thickness={0.05}
-          ior={1.5}
+          color="#10171d"
+          roughness={0.06}
+          metalness={0.1}
+          envMapIntensity={2.4}
           clearcoat={1}
-          clearcoatRoughness={0.05}
+          clearcoatRoughness={0.04}
           emissive={litWindows ? windowColor : "#000000"}
-          emissiveIntensity={litWindows ? 0.12 : 0}
+          emissiveIntensity={litWindows ? 0.35 : 0}
         />
       </mesh>
       <mesh position={[0, height + 0.06, 0]} castShadow>
         <boxGeometry args={[width + 0.06, 0.12, length + 0.1]} />
-        <meshStandardMaterial color={roofColor ?? color} metalness={metalness} roughness={roughness} />
+        <meshStandardMaterial color={roofColor ?? color} roughnessMap={panelRough} metalness={metalness} roughness={roughness} />
       </mesh>
       {/* Undercarriage skirt: catches shadow beneath the floor line so the car doesn't look hollow. */}
       <mesh position={[0, 0.18, 0]}>

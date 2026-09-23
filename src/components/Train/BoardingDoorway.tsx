@@ -2,6 +2,8 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { timelineStore } from "../../state/timelineStore";
+import { panelRoughnessTexture } from "../../materials/presets";
+import { useDetailMap } from "../../materials/useDetailMap";
 import type { DoorSpec, DoorState } from "./trainDoors";
 
 const HIGHLIGHT_COLOR = "#ffc93a";
@@ -42,6 +44,11 @@ export function BoardingDoorway({ spec, stateRef, swingToward }: BoardingDoorway
     () => new THREE.MeshStandardMaterial({ color: HIGHLIGHT_COLOR, emissive: HIGHLIGHT_COLOR, emissiveIntensity: 2, toneMapped: false, depthWrite: false, side: THREE.DoubleSide }),
     [],
   );
+
+  // The door leaf is held in close-up for the whole boarding beat, so flat paint on it is the
+  // most-looked-at flat surface in the film. It gets the coachwork weathering — the rain runs and
+  // hand-polish — but not the beading relief, which belongs on a body side and not on a door.
+  const leafRough = useDetailMap(panelRoughnessTexture, 1, 1);
 
   const midY = spec.floorY + spec.height / 2;
 
@@ -86,11 +93,25 @@ export function BoardingDoorway({ spec, stateRef, swingToward }: BoardingDoorway
         <group position={[0, 0, (-swingToward * spec.width) / 2]}>
           <mesh castShadow>
             <boxGeometry args={[0.035, spec.height - 0.02, spec.width]} />
-            <meshStandardMaterial color={spec.leaf} metalness={0.35} roughness={0.5} />
+            <meshStandardMaterial color={spec.leaf} roughnessMap={leafRough} metalness={0.35} roughness={0.5} />
           </mesh>
           <mesh position={[-0.02, spec.height * 0.2, 0]}>
             <boxGeometry args={[0.01, spec.height * 0.24, spec.width * 0.55]} />
-            <meshPhysicalMaterial color="#9fc4d4" emissive="#cfe6f0" emissiveIntensity={0.25} roughness={0.08} metalness={0.1} clearcoat={1} />
+            {/* Actual glass rather than a pale blue slab: the droplight is the one place the viewer
+                can see into the carriage before boarding it, and an opaque pane there makes the
+                train read as a prop. The emissive keeps it legible once the light goes. */}
+            <meshPhysicalMaterial
+              color="#b9d6e2"
+              transmission={0.82}
+              thickness={0.02}
+              ior={1.5}
+              emissive="#cfe6f0"
+              emissiveIntensity={0.12}
+              roughness={0.06}
+              metalness={0}
+              clearcoat={1}
+              clearcoatRoughness={0.05}
+            />
           </mesh>
           <mesh position={[-0.03, -0.05, -swingToward * spec.width * 0.36]}>
             <boxGeometry args={[0.03, 0.22, 0.03]} />
