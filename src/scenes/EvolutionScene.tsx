@@ -24,7 +24,7 @@ import { DepartureBoard } from "../components/Environment/SmartRail";
 import type { NpcEra, TrainNpcEra } from "../components/People/npcStyle";
 import { timelineStore } from "../state/timelineStore";
 import { skyState } from "../state/skyState";
-import { quality } from "../effects/renderQuality";
+import { useQuality } from "../effects/renderQuality";
 import { getSceneLocal, smootherstep, lerp, clamp01 } from "../timeline/timeline";
 import { getEraAtTime, getGlobalProgress, ERAS, EVOLUTION_DURATION } from "../data/timeline";
 import { applyOpacity } from "../utils/fade";
@@ -176,6 +176,7 @@ const EVOLUTION_SUN = new THREE.Vector3(10, 14, 6).normalize();
  * visible through the cabin windows and during the platform handoffs alike. */
 function EvolutionAtmosphere() {
   const { scene } = useThree();
+  const quality = useQuality();
   const dirLightRef = useRef<THREE.DirectionalLight>(null);
   const ambientRef = useRef<THREE.AmbientLight>(null);
   const hemiRef = useRef<THREE.HemisphereLight>(null);

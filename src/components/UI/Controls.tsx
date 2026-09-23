@@ -4,6 +4,7 @@ import { TOTAL_DURATION } from "../../timeline/timeline";
 import { trainAudio } from "../../audio/TrainAudioEngine";
 import { narration } from "../../audio/NarrationEngine";
 import { lookInput } from "../Camera/lookInput";
+import { SettingsPanel } from "./SettingsPanel";
 
 const isTouchDevice = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 
@@ -39,6 +40,7 @@ export function Controls({ split, onToggleSplit }: ControlsProps) {
   const gyroActive = useSyncExternalStore(lookInput.subscribe, lookInput.getGyroActive);
   const voiceOver = useSyncExternalStore(narration.subscribe, narration.getEnabled);
   const [muted, setMuted] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const progress = Math.min(elapsed / TOTAL_DURATION, 1);
   const finished = elapsed >= TOTAL_DURATION;
 
@@ -74,10 +76,12 @@ export function Controls({ split, onToggleSplit }: ControlsProps) {
         position: "absolute",
         left: 0,
         right: 0,
+        top: 0,
         bottom: 0,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
+        justifyContent: "flex-end",
         gap: 12,
         padding: "0 20px clamp(16px, 4vh, 32px)",
         pointerEvents: "none",
@@ -116,32 +120,41 @@ export function Controls({ split, onToggleSplit }: ControlsProps) {
         </div>
         <span>{formatTime(TOTAL_DURATION)}</span>
       </div>
+      {/* Only the two things wanted *during* the film stay in front of it. Everything else is a
+          decision made once, and lives behind the gear. RECENTER is the exception that earns its
+          place: it is only shown when the phone's gyro is driving the look, and it is useless
+          unless it can be reached at the moment the view has drifted. */}
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 12, pointerEvents: "auto" }}>
         <button style={buttonStyle} onClick={handlePlay}>
           {finished ? "REPLAY" : playing ? "PAUSE" : "PLAY"}
-        </button>
-        <button style={buttonStyle} onClick={() => timelineStore.restart()}>
-          RESTART
-        </button>
-        <button style={{ ...buttonStyle, minWidth: 44 }} onClick={handleMuteToggle}>
-          {muted ? "\u{1F507}" : "\u{1F50A}"}
-        </button>
-        <button
-          style={voiceOver ? buttonStyle : { ...buttonStyle, background: "rgba(245,245,240,0.4)" }}
-          onClick={handleVoiceOverToggle}
-          title={voiceOver ? "Turn the narration off" : "Turn the narration on"}
-        >
-          {voiceOver ? "VOICE ON" : "VOICE OFF"}
-        </button>
-        <button style={buttonStyle} onClick={onToggleSplit}>
-          {split ? "1 SCREEN" : "2 SCREENS"}
         </button>
         {(gyroActive || isTouchDevice) && (
           <button style={buttonStyle} onClick={lookInput.recenter}>
             RECENTER
           </button>
         )}
+        <button
+          style={{ ...buttonStyle, minWidth: 44, fontSize: 15, lineHeight: 1 }}
+          onClick={() => setSettingsOpen(true)}
+          title="Settings"
+          aria-label="Settings"
+        >
+          {"\u2699"}
+        </button>
       </div>
+
+      {settingsOpen && (
+        <SettingsPanel
+          onClose={() => setSettingsOpen(false)}
+          split={split}
+          onToggleSplit={onToggleSplit}
+          muted={muted}
+          onToggleMuted={handleMuteToggle}
+          voiceOver={voiceOver}
+          onToggleVoiceOver={handleVoiceOverToggle}
+          onRestart={() => timelineStore.restart()}
+        />
+      )}
     </div>
   );
 }

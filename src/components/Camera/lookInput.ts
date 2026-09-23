@@ -122,7 +122,9 @@ class LookInput {
 
   private onPointerDown = (e: PointerEvent) => {
     if (e.pointerType !== "touch" || this.touch) return;
-    if ((e.target as Element | null)?.closest?.("button")) return;
+    // Buttons, and anything inside a UI panel: a finger sliding across a setting must not also
+    // swing the camera behind it.
+    if ((e.target as Element | null)?.closest?.("button, [data-ui-panel]")) return;
     this.touch = { id: e.pointerId, x: e.clientX, y: e.clientY };
   };
 

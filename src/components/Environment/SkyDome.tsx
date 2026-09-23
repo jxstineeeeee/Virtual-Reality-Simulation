@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { skyState } from "../../state/skyState";
-import { quality } from "../../effects/renderQuality";
+import { useQuality } from "../../effects/renderQuality";
 
 /**
  * Comfortably inside the camera's 250 m far plane, and re-centred on the camera every frame so it
@@ -107,7 +107,9 @@ const FRAGMENT = /* glsl */ `
 const ENV_INTENSITY = 0.45;
 
 /** Re-baking the reflection probe costs six cube faces plus the mip chain, so it is rate-limited. */
-const ENV_INTERVAL = quality.tier === "low" ? 1.2 : 0.3;
+function envInterval(tier: string): number {
+  return tier === "low" ? 1.2 : 0.3;
+}
 
 function makeSkyMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
@@ -145,6 +147,7 @@ function makeSkyMaterial(): THREE.ShaderMaterial {
  */
 function useSkyEnvironment(material: THREE.ShaderMaterial) {
   const { gl, scene } = useThree();
+  const quality = useQuality();
 
   const rig = useMemo(() => {
     const probeScene = new THREE.Scene();
@@ -179,7 +182,7 @@ function useSkyEnvironment(material: THREE.ShaderMaterial) {
     const key = `${q(u.uHorizon.value)}|${q(u.uZenith.value)}|${q(u.uSun.value)}|${(u.uCloud.value * 12) | 0}|${(u.uDim.value * 12) | 0}`;
     if (key === lastKey.current) return;
     lastKey.current = key;
-    cooldown.current = ENV_INTERVAL;
+    cooldown.current = envInterval(quality.tier);
 
     const previous = target.current;
     // The dome sits at 200 m, so the probe camera's far plane has to reach past it.

@@ -5,7 +5,7 @@ import { timelineStore } from "../../state/timelineStore";
 import { getSceneLocal, type SceneId } from "../../timeline/timeline";
 import { journeyEnvironmentState } from "../../state/journeyEnvironmentState";
 import { skyState } from "../../state/skyState";
-import { quality } from "../../effects/renderQuality";
+import { useQuality } from "../../effects/renderQuality";
 
 interface Palette {
   /** Horizon colour. Doubles as the fog colour, so terrain fogs into the sky rather than into a wall. */
@@ -60,6 +60,7 @@ const PALETTES: Partial<Record<SceneId, Palette>> = {
  */
 export function GlobalAtmosphere() {
   const { scene } = useThree();
+  const quality = useQuality();
   const dirLightRef = useRef<THREE.DirectionalLight>(null);
   const ambientRef = useRef<THREE.AmbientLight>(null);
   const hemiRef = useRef<THREE.HemisphereLight>(null);

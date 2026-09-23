@@ -16,7 +16,7 @@ import { BlendFunction } from "postprocessing";
 import type { DepthOfFieldEffect } from "postprocessing";
 import * as THREE from "three";
 import { cameraFocusState } from "../state/cameraFocusState";
-import { quality } from "./renderQuality";
+import { useQuality } from "./renderQuality";
 
 /** Focus this far out and everything past it is sharp — the lens this film is notionally shot on. */
 const HYPERFOCAL = 26;
@@ -63,8 +63,13 @@ function FocusPuller() {
  * machines drop to the cheaper SMAA and go without AO rather than dropping frames.
  */
 export function PostFX() {
+  const quality = useQuality();
   return (
+    // Keyed on the tier so a change tears the composer down and builds a new one. Toggling the
+    // normal pass and the MSAA sample count underneath a live composer is the kind of thing that
+    // half-applies; remounting is cheap here because it happens twice a session at most.
     <EffectComposer
+      key={quality.tier}
       multisampling={quality.multisampling}
       enableNormalPass={quality.ambientOcclusion}
       frameBufferType={THREE.HalfFloatType}

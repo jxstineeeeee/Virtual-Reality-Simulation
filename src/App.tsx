@@ -12,7 +12,7 @@ import { EvolutionFootageOverlay } from "./components/UI/EvolutionFootageOverlay
 import { EvolutionEraFade } from "./components/UI/EvolutionEraFade";
 import { NarrationCaption } from "./components/UI/NarrationCaption";
 import { SplitMirror } from "./effects/SplitMirror";
-import { quality } from "./effects/renderQuality";
+import { useQuality } from "./effects/renderQuality";
 import "./App.css";
 
 /** Per-half HTML overlays — rendered once per screen half so titles/fades match on both sides. */
@@ -32,6 +32,7 @@ function EyeOverlays() {
 function App() {
   const [split, setSplit] = useState(true);
   const mirrorRef = useRef<HTMLCanvasElement>(null);
+  const quality = useQuality();
 
   return (
     <div className={split ? "app-root is-split" : "app-root"}>
