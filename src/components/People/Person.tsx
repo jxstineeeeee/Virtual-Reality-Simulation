@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type * as THREE from "three";
 import { timelineStore } from "../../state/timelineStore";
+import { clamp01, lerp } from "../../timeline/timeline";
 import type { HairStyle, HatKind, Outfit } from "./npcStyle";
 
 export type NpcPose = "stand" | "sit";
@@ -12,6 +13,8 @@ export interface NpcMotion {
   walk: number;
   /** Gait cycle angle (radians), advanced from distance traveled so feet don't skate. */
   stride: number;
+  /** 0 standing .. 1 seated. Blended, not switched, so a waiting passenger can rise in one motion. */
+  sit?: number;
 }
 
 // Reference skeleton (meters, origin at the feet, facing +Z), before `outfit.height` scaling.
@@ -22,6 +25,34 @@ const THIGH = 0.43;
 const SIT_THIGH = -1.36;
 /** Radians/sec of the shovelling cycle — one dig-and-throw every ~3.3s, the pace of a long shift. */
 const SHOVEL_RATE = 1.9;
+
+/**
+ * One leg's gait cycle, as smooth periodic functions of its own phase (radians):
+ *   0 = mid-swing   π/2 = heel strike   π = mid-stance   3π/2 = toe-off
+ * Everything here is built from cosines so it is continuous in value *and* slope across the cycle —
+ * the old `max(0, cos)` knee kinked twice per step, which is what read as a mechanical shuffle.
+ */
+function thighSwing(p: number): number {
+  return -Math.sin(p) * 0.46 - 0.04;
+}
+
+/** Two flexions per cycle: the big one through swing, and a small one absorbing the heel strike. */
+function kneeFlex(p: number): number {
+  const swing = Math.pow((1 + Math.cos(p + 0.35)) / 2, 3);
+  const load = Math.pow((1 + Math.cos(p - 2.2)) / 2, 12);
+  return 0.07 + swing + load * 0.22;
+}
+
+/**
+ * The ankle is what stops a walk looking like stilts: the sole stays flat while the foot is planted
+ * (so it cancels the shin's pitch), the toe lifts clear through swing, and the heel rolls up to push
+ * off. `thigh`/`knee` are the already-blended joint angles this foot hangs off.
+ */
+function ankleFlex(p: number, thigh: number, knee: number): number {
+  const planted = Math.pow((1 - Math.cos(p)) / 2, 1.4);
+  const pushOff = Math.pow((1 + Math.cos(p - 4.75)) / 2, 8) * 0.85;
+  return -(thigh + knee) * planted - 0.22 * (1 - planted) + pushOff;
+}
 
 const cloth = (color: string, roughness = 0.9) => <meshStandardMaterial color={color} roughness={roughness} />;
 
@@ -173,48 +204,67 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
   const head = useRef<THREE.Group>(null);
   const thighs = useRef<(THREE.Group | null)[]>([]);
   const knees = useRef<(THREE.Group | null)[]>([]);
+  const ankles = useRef<(THREE.Group | null)[]>([]);
   const shoulders = useRef<(THREE.Group | null)[]>([]);
   const elbows = useRef<(THREE.Group | null)[]>([]);
+  const standDrape = useRef<THREE.Group>(null);
+  const sitDrape = useRef<THREE.Group>(null);
+  const pack = useRef<THREE.Mesh>(null);
+  const paper = useRef<THREE.Mesh>(null);
+  const luggage = useRef<THREE.Group>(null);
 
   const seated = pose === "sit";
+  /** A figure driven by `motionRef` can change pose mid-shot, so it carries both wardrobes at once. */
+  const mobile = !!motionRef;
   const female = outfit.body === "f";
-  const carrying = !seated && (outfit.carry === "suitcase" || outfit.carry === "briefcase") && activity !== "wave" && activity !== "phone";
+  const carrying = (!seated || mobile) && (outfit.carry === "suitcase" || outfit.carry === "briefcase") && activity !== "wave" && activity !== "phone";
 
   useFrame(() => {
     const t = timelineStore.getElapsed() + phase;
     const walk = motionRef?.current.walk ?? 0;
     const stride = motionRef?.current.stride ?? 0;
+    const sit = clamp01(motionRef?.current.sit ?? (seated ? 1 : 0));
+    const upright = 1 - sit;
+    const holding = carrying && sit < 0.5;
 
     if (hips.current) {
-      hips.current.position.y = seated ? SEAT_HIP_Y : HIP_Y - 0.012 * (1 - walk) + Math.abs(Math.cos(stride)) * 0.028 * walk;
-      hips.current.rotation.z = seated ? 0 : Math.sin(t * 0.33) * 0.02 * (1 - walk);
+      // The pelvis rises twice per stride (once over each stance leg), shifts across onto whichever
+      // leg is carrying, and rotates with the swinging one — the three things that turn a leg
+      // animation into a walk.
+      const bob = (0.018 + Math.cos(stride * 2) * 0.018) * walk;
+      hips.current.position.y = lerp(HIP_Y - 0.012 * (1 - walk) + bob, SEAT_HIP_Y, sit);
+      hips.current.position.x = -Math.cos(stride) * 0.022 * walk * upright;
+      const sway = Math.sin(t * 0.33) * 0.02 * (1 - walk) - Math.sin(stride) * 0.03 * walk;
+      hips.current.rotation.set(0, -Math.sin(stride) * 0.05 * walk * upright, sway * upright);
     }
 
     for (let i = 0; i < 2; i++) {
       const s = i === 0 ? -1 : 1;
       const thigh = thighs.current[i];
       const knee = knees.current[i];
+      const ankle = ankles.current[i];
       if (!thigh || !knee) continue;
-      if (seated) {
-        thigh.rotation.set(SIT_THIGH, s * 0.07, 0);
-        knee.rotation.x = -SIT_THIGH + s * 0.05;
-      } else {
-        const legPhase = stride + (s > 0 ? 0 : Math.PI);
-        thigh.rotation.set(-Math.sin(legPhase) * 0.48 * walk, 0, 0);
-        knee.rotation.x = Math.max(0, Math.cos(legPhase)) * 0.75 * walk + 0.03;
-      }
+      const legPhase = stride + (s > 0 ? 0 : Math.PI);
+      const hipAngle = lerp(thighSwing(legPhase) * walk, SIT_THIGH, sit);
+      const kneeAngle = lerp(lerp(0.03, kneeFlex(legPhase), walk), -SIT_THIGH + s * 0.05, sit);
+      thigh.rotation.set(hipAngle, lerp(0, s * 0.07, sit), 0);
+      knee.rotation.x = kneeAngle;
+      if (ankle) ankle.rotation.x = lerp(ankleFlex(legPhase, hipAngle, kneeAngle) * walk, 0.12, sit);
     }
 
     if (spine.current) {
       spine.current.scale.y = 1 + Math.sin(t * 1.7) * 0.008;
-      if (seated) {
-        const lean = activity === "newspaper" || activity === "phone" ? 0.02 : -0.1;
-        spine.current.rotation.set(lean, 0, Math.sin(t * 1.1) * 0.012);
-      } else if (activity === "shovel") {
+      if (activity === "shovel" && sit < 0.5) {
         // The whole body does the work, not just the arms: a deep bend into the heap, a twist to throw.
         spine.current.rotation.set(0.46 + Math.sin(t * SHOVEL_RATE) * 0.2, Math.sin(t * SHOVEL_RATE - 0.5) * 0.3, 0);
       } else {
-        spine.current.rotation.set(0.05 * walk, Math.sin(stride) * 0.08 * walk, -Math.sin(t * 0.33) * 0.015 * (1 - walk));
+        const lean = activity === "newspaper" || activity === "phone" ? 0.02 : -0.1;
+        // The chest counter-rotates against the pelvis, which is what the arm swing is really hanging off.
+        spine.current.rotation.set(
+          lerp(0.05 * walk, lean, sit),
+          lerp(Math.sin(stride) * 0.07 * walk, 0, sit),
+          lerp(-Math.sin(t * 0.33) * 0.015 * (1 - walk), Math.sin(t * 1.1) * 0.012, sit),
+        );
       }
     }
 
@@ -247,28 +297,35 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
       const elbow = elbows.current[i];
       if (!shoulder || !elbow) continue;
       const right = s > 0;
-      let sx = 0;
-      let sz = s * 0.08;
-      let ex = -0.12;
-      let ez = 0;
+      const armPhase = stride + (right ? 0 : Math.PI);
 
-      if (seated) {
-        sx = -0.3;
-        sz = s * 0.04;
-        ex = -1.0;
-      } else {
-        sx = Math.sin(stride + (s > 0 ? 0 : Math.PI)) * 0.4 * walk;
+      // Seated arm, and whatever the seated activity does with it.
+      let seatSx = -0.3;
+      let seatSz = s * 0.04;
+      let seatEx = -1.0;
+      const seatEz = 0;
+      if (activity === "newspaper") {
+        seatSx = -0.6;
+        seatSz = -s * 0.14;
+        seatEx = -1.45;
+      } else if (activity === "phone" && right) {
+        seatSx = -0.35;
+        seatSz = -0.12;
+        seatEx = -2.0;
       }
 
-      if (activity === "newspaper" && seated) {
-        sx = -0.6;
-        sz = -s * 0.14;
-        ex = -1.45;
-      } else if (activity === "phone" && right) {
+      // Standing/walking arm: swings opposite its own leg, and the elbow folds into the forward swing
+      // instead of staying locked at one angle the whole way round.
+      let sx = Math.sin(armPhase) * 0.42 * walk;
+      let sz = s * (0.08 + 0.03 * walk);
+      let ex = -0.12 - walk * (0.3 - Math.sin(armPhase) * 0.26);
+      let ez = 0;
+
+      if (activity === "phone" && right) {
         sx = -0.35;
         sz = -0.12;
         ex = -2.0;
-      } else if (activity === "wave" && right && !seated) {
+      } else if (activity === "wave" && right) {
         sx = -0.2;
         sz = 2.6;
         ex = 0;
@@ -277,24 +334,32 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
         sx = -2.4;
         sz = 0;
         ex = -0.15;
-      } else if (activity === "shovel" && !seated) {
+      } else if (activity === "shovel") {
         // Both hands on the shaft: the lead hand low and forward, the other back by the hip.
         const swing = Math.sin(t * SHOVEL_RATE);
         sx = (right ? -1.15 : -0.85) + swing * 0.5;
         sz = s * 0.26;
         ex = (right ? -0.45 : -0.95) - Math.max(swing, 0) * 0.45;
-      } else if (activity === "chat" && right && !seated) {
+      } else if (activity === "chat" && right) {
         sx = -0.25 + Math.sin(t * 1.3) * 0.1;
         ex = -1.2 + Math.sin(t * 1.7) * 0.25;
-      } else if (carrying && right) {
+      } else if (holding && right) {
         sx *= 0.2;
         sz = 0.14;
         ex = 0;
       }
 
-      shoulder.rotation.set(sx, 0, sz);
-      elbow.rotation.set(ex, 0, ez);
+      shoulder.rotation.set(lerp(sx, seatSx, sit), 0, lerp(sz, seatSz, sit));
+      elbow.rotation.set(lerp(ex, seatEx, sit), 0, lerp(ez, seatEz, sit));
     }
+
+    // Wardrobe that only makes sense in one pose. A figure that never changes pose renders only its
+    // own half of this, so these are all no-ops for the seated cabin and the standing platform.
+    if (standDrape.current) standDrape.current.visible = sit < 0.5;
+    if (sitDrape.current) sitDrape.current.visible = sit >= 0.5;
+    if (pack.current) pack.current.visible = sit < 0.5;
+    if (paper.current) paper.current.visible = sit >= 0.5;
+    if (luggage.current) luggage.current.visible = holding;
   });
 
   const torsoWidth = female ? 1.02 : 1.15;
@@ -303,7 +368,7 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
   return (
     // Seated figures never scale below reference size: the cabin's tall headrests (top at 1.32m) would
     // otherwise hide shorter passengers completely from the seated first-person camera.
-    <group position={position} rotation={[0, yaw, 0]} scale={seated ? Math.max(outfit.height, 1.02) : outfit.height}>
+    <group position={position} rotation={[0, yaw, 0]} scale={seated && !mobile ? Math.max(outfit.height, 1.02) : outfit.height}>
       <group ref={hips} position={[0, seated ? SEAT_HIP_Y : HIP_Y, 0]}>
         {/* Pelvis */}
         <mesh position={[0, 0.02, 0]} castShadow>
@@ -322,29 +387,35 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
                 <capsuleGeometry args={[0.058, 0.3, 4, 10]} />
                 {outfit.skirt === "knee" && !seated ? skin : cloth(outfit.bottom)}
               </mesh>
-              <mesh position={[0, -0.43, 0.05]} castShadow>
-                <boxGeometry args={[0.1, 0.07, 0.25]} />
-                {cloth(outfit.shoes, 0.5)}
-              </mesh>
+              <group ref={(el) => (ankles.current[i] = el)} position={[0, -0.4, 0]}>
+                <mesh position={[0, -0.035, 0.05]} castShadow>
+                  <boxGeometry args={[0.1, 0.07, 0.25]} />
+                  {cloth(outfit.shoes, 0.5)}
+                </mesh>
+              </group>
             </group>
           </group>
         ))}
 
         {/* Skirt / coat hem hanging from the waist while upright; folded over the lap when seated */}
-        {!seated && outfit.skirt !== "none" && (
-          <mesh position={[0, outfit.skirt === "long" ? -0.36 : -0.22, 0]} castShadow>
-            <cylinderGeometry args={[0.17, outfit.skirt === "long" ? 0.33 : 0.25, outfit.skirt === "long" ? 0.86 : 0.55, 16, 1, true]} />
-            <meshStandardMaterial color={outfit.bottom} roughness={0.9} side={2} />
-          </mesh>
-        )}
-        {!seated && outfit.longCoat && (
-          <mesh position={[0, -0.2, 0]} scale={[1, 1, 0.8]} castShadow>
-            <cylinderGeometry args={[0.19, 0.215, 0.48, 16, 1, true]} />
-            <meshStandardMaterial color={outfit.top} roughness={0.9} side={2} />
-          </mesh>
+        {(!seated || mobile) && (outfit.skirt !== "none" || outfit.longCoat) && (
+          <group ref={standDrape}>
+            {outfit.skirt !== "none" && (
+              <mesh position={[0, outfit.skirt === "long" ? -0.36 : -0.22, 0]} castShadow>
+                <cylinderGeometry args={[0.17, outfit.skirt === "long" ? 0.33 : 0.25, outfit.skirt === "long" ? 0.86 : 0.55, 16, 1, true]} />
+                <meshStandardMaterial color={outfit.bottom} roughness={0.9} side={2} />
+              </mesh>
+            )}
+            {outfit.longCoat && (
+              <mesh position={[0, -0.2, 0]} scale={[1, 1, 0.8]} castShadow>
+                <cylinderGeometry args={[0.19, 0.215, 0.48, 16, 1, true]} />
+                <meshStandardMaterial color={outfit.top} roughness={0.9} side={2} />
+              </mesh>
+            )}
+          </group>
         )}
         {seated && (outfit.skirt !== "none" || outfit.longCoat) && (
-          <group>
+          <group ref={sitDrape}>
             <mesh position={[0, -0.02, 0.2]}>
               <boxGeometry args={[0.36, 0.1, 0.44]} />
               {cloth(outfit.skirt !== "none" ? outfit.bottom : outfit.top)}
@@ -375,14 +446,14 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
             {skin}
           </mesh>
 
-          {outfit.carry === "backpack" && !seated && (
-            <mesh position={[0, 0.3, -0.17]} castShadow>
+          {outfit.carry === "backpack" && (!seated || mobile) && (
+            <mesh ref={pack} position={[0, 0.3, -0.17]} castShadow>
               <boxGeometry args={[0.3, 0.38, 0.14]} />
               {cloth(outfit.accent === "#f2f2f2" ? "#2a2a30" : outfit.accent, 0.75)}
             </mesh>
           )}
           {activity === "newspaper" && seated && (
-            <mesh position={[0, 0.3, 0.36]} rotation={[-0.35, 0, 0]}>
+            <mesh ref={paper} position={[0, 0.3, 0.36]} rotation={[-0.35, 0, 0]}>
               <boxGeometry args={[0.52, 0.36, 0.01]} />
               <meshStandardMaterial color="#e6e0cf" roughness={0.95} />
             </mesh>
@@ -456,7 +527,7 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
                   </mesh>
                 )}
                 {s > 0 && carrying && (
-                  <group position={[0, -0.47, 0]}>
+                  <group ref={luggage} position={[0, -0.47, 0]}>
                     <mesh castShadow>
                       <boxGeometry args={outfit.carry === "suitcase" ? [0.14, 0.34, 0.46] : [0.1, 0.28, 0.38]} />
                       {cloth(outfit.carry === "suitcase" ? "#5a3a22" : "#2a1e16", 0.6)}

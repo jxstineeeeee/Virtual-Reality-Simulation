@@ -6,7 +6,7 @@ import { BoardingDoorway } from "../components/Train/BoardingDoorway";
 import { TRAIN_DOORS, type DoorState } from "../components/Train/trainDoors";
 import { sampleShots, type Shot, type CameraShotResult } from "../components/Camera/shotUtils";
 import { timelineStore } from "../state/timelineStore";
-import { getSceneLocal, clamp01, smootherstep } from "../timeline/timeline";
+import { getSceneLocal, sceneTimeAt, clamp01, smootherstep } from "../timeline/timeline";
 import { PlatformCrowd } from "../components/People/Crowds";
 import { STEAM_STATION_AVOID } from "./npcCasting";
 
@@ -17,6 +17,8 @@ const HIGHLIGHT_START = 2;
 const HIGHLIGHT_END = 30;
 const DOOR_OPEN_START = 18;
 const DOOR_OPEN_END = 22;
+/** Clock time the waiting passengers get up off the benches — as the door starts to slide. */
+const BOARD_AT = sceneTimeAt("boarding", DOOR_OPEN_START);
 
 export function boardingDoorOpen(local: number): number {
   return smootherstep((local - DOOR_OPEN_START) / (DOOR_OPEN_END - DOOR_OPEN_START));
@@ -40,7 +42,7 @@ export function BoardingScene() {
   return (
     <>
       <StationBackdrop progress={0.08} />
-      <PlatformCrowd era="steam" seed={11} avoid={STEAM_STATION_AVOID} />
+      <PlatformCrowd era="steam" seed={11} avoid={STEAM_STATION_AVOID} boardAt={BOARD_AT} boardDoorZ={DOOR.z} />
       <group>
         <SteamTrain speed={0.15} />
         {/* The viewer approaches from +Z (the rear of the train), so the door swings open toward -Z. */}

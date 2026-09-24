@@ -25,7 +25,7 @@ import type { NpcEra, TrainNpcEra } from "../components/People/npcStyle";
 import { timelineStore } from "../state/timelineStore";
 import { skyState } from "../state/skyState";
 import { useQuality } from "../effects/renderQuality";
-import { getSceneLocal, smootherstep, lerp, clamp01 } from "../timeline/timeline";
+import { getSceneLocal, sceneTimeAt, smootherstep, lerp, clamp01 } from "../timeline/timeline";
 import { getEraAtTime, getGlobalProgress, ERAS, EVOLUTION_DURATION } from "../data/timeline";
 import { applyOpacity } from "../utils/fade";
 import { sampleShots, type Shot, type CameraShotResult } from "../components/Camera/shotUtils";
@@ -428,16 +428,18 @@ function ShinkansenSignage({ start, end }: { start: number; end: number }) {
 }
 
 /** Platform NPCs for one handoff, dressed for the arriving train's era and shown only while the
- * viewer is standing on the platform for that handoff. */
-function HandoffCrowd({ start, end, era, seed }: { start: number; end: number; era: NpcEra; seed: number }) {
+ * viewer is standing on the platform for that handoff. The people on the benches get up as the new
+ * train comes to a stand, a moment before its door opens, and board it alongside the viewer. */
+function HandoffCrowd({ h, era, seed }: { h: Handoff; era: NpcEra; seed: number }) {
   const groupRef = useRef<THREE.Group>(null);
+  const boardAt = sceneTimeAt("evolution", beats(h).arriveEnd - 1.5);
   useFrame(() => {
     const local = getSceneLocal(timelineStore.getElapsed()).local;
-    if (groupRef.current) groupRef.current.visible = local >= start && local < end;
+    if (groupRef.current) groupRef.current.visible = local >= h.start && local < h.end;
   });
   return (
     <group ref={groupRef} visible={false}>
-      <PlatformCrowd era={era} seed={seed} avoid={HANDOFF_CROWD_AVOID} />
+      <PlatformCrowd era={era} seed={seed} avoid={HANDOFF_CROWD_AVOID} boardAt={boardAt} />
     </group>
   );
 }
@@ -487,9 +489,9 @@ export function EvolutionScene() {
       <TrainHandoff handoff={H1} DepartTrain={SteamTrain} ArriveTrain={DieselTrain} DepartEffect={SteamEffect} ArriveEffect={DieselExhaustEffect} />
       <TrainHandoff handoff={H2} DepartTrain={DieselTrain} ArriveTrain={ElectricTrain} DepartEffect={DieselExhaustEffect} ArriveEffect={ElectricSparkEffect} />
       <TrainHandoff handoff={H3} DepartTrain={ElectricTrain} ArriveTrain={ShinkansenTrain} DepartEffect={ElectricSparkEffect} ArriveEffect={ElectricSparkEffect} />
-      <HandoffCrowd start={H1.start} end={H1.end} era="diesel" seed={71} />
-      <HandoffCrowd start={H2.start} end={H2.end} era="electric" seed={72} />
-      <HandoffCrowd start={H3.start} end={H3.end} era="modern" seed={73} />
+      <HandoffCrowd h={H1} era="diesel" seed={71} />
+      <HandoffCrowd h={H2} era="electric" seed={72} />
+      <HandoffCrowd h={H3} era="modern" seed={73} />
       <ShinkansenSignage start={H3.start} end={H3.end} />
       <EvolutionWindowView />
       <EraCabin theme={DIESEL_THEME} era="diesel" start={H1.end} end={H2.start} />
