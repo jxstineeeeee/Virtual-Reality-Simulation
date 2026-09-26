@@ -4,12 +4,13 @@ import type * as THREE from "three";
 import { Waggonway } from "../components/Environment/Waggonway";
 import { MineWorkings } from "../components/Environment/MineWorkings";
 import { ChaldronWagon } from "../components/Train/ChaldronWagon";
-import { Horse } from "../components/People/Horse";
+import { Horse, HORSE_STRIDE_LENGTH } from "../components/People/Horse";
+import { strideRadians } from "../components/People/gait";
 import { Person, type NpcMotion } from "../components/People/Person";
 import { createRng, makeOutfit, type Outfit } from "../components/People/npcStyle";
 import { sampleShots, type Shot, type CameraShotResult } from "../components/Camera/shotUtils";
 import { timelineStore } from "../state/timelineStore";
-import { getScene, getSceneLocal, clamp01 } from "../timeline/timeline";
+import { getScene, getSceneLocal } from "../timeline/timeline";
 
 /** Where the loaded wagon stands while it is being filled, just clear of the adit mouth. */
 const WAGON_START_Z = 6.5;
@@ -37,9 +38,39 @@ export function wagonDistance(local: number): number {
   return HAUL_SPEED * PULL_RAMP * 0.5 + HAUL_SPEED * (t - PULL_RAMP);
 }
 
-/** 0 standing .. 1 walking, for the horse and the man at its head. */
-function haulWalk(local: number): number {
-  return clamp01((local - PULL_START + 0.8) / 1.4);
+/** The load's speed as a fraction of `HAUL_SPEED` — the exact derivative of `wagonDistance`. */
+function wagonPace(local: number): number {
+  const t = local - PULL_START;
+  if (t <= 0) return 0;
+  if (t >= PULL_RAMP) return 1;
+  const u = t / PULL_RAMP;
+  return u * u * (3 - 2 * u);
+}
+
+/**
+ * 0 standing .. 1 full walking pace, for the horse and the man at its head. Ground speed goes as the
+ * *square* of a gait (see `gait.ts`), so keeping step with the wagon means taking the root of its
+ * pace: anything else and their legs are moving at a different speed from the ground under them —
+ * which is what had the hauler striding on the spot for the best part of a second before it budged.
+ */
+function haulGait(local: number): number {
+  return Math.sqrt(wagonPace(local));
+}
+
+/** Where the integral below starts, subtracted so the pull is worth nothing until it begins. */
+const HAUL_RAMP_AT_REST = -0.6 * Math.sqrt(3);
+
+/**
+ * Seconds of full-pace walking the pull is worth so far, which is what both their gait cycles are
+ * clocked off. The integral of `haulGait` happens to be exact: ∫√(3u²−2u³) du = ∫u√(3−2u) du, which
+ * is a^{5/2}/10 − a^{3/2}/2 with a = 3 − 2u.
+ */
+function haulStrideTime(local: number): number {
+  const t = local - PULL_START;
+  if (t <= 0) return 0;
+  const u = Math.min(t / PULL_RAMP, 1);
+  const a = 3 - 2 * u;
+  return PULL_RAMP * ((Math.sqrt(a) * a * (a - 5)) / 10 - HAUL_RAMP_AT_REST) + Math.max(t - PULL_RAMP, 0);
 }
 
 /** Metres of travel between hoofbeats: a walk puts down four feet per stride. */
@@ -101,13 +132,13 @@ function MineCrew() {
 }
 
 /** The hauler walking at the horse's head, rein hand up, keeping pace with the load. */
-function Hauler({ distanceRef, walkRef }: { distanceRef: React.MutableRefObject<number>; walkRef: React.MutableRefObject<number> }) {
+function Hauler({ strideRef, gaitRef }: { strideRef: React.MutableRefObject<number>; gaitRef: React.MutableRefObject<number> }) {
   const outfit = useMemo(() => makeOutfit("mine", createRng(19)), []);
   const motion = useRef<NpcMotion>({ walk: 0, stride: 0 });
 
   useFrame(() => {
-    motion.current.walk = walkRef.current;
-    motion.current.stride = (distanceRef.current / 1.4) * Math.PI * 2;
+    motion.current.walk = gaitRef.current;
+    motion.current.stride = strideRef.current;
   });
 
   return <Person outfit={outfit} motionRef={motion} activity="holdPole" phase={13} yaw={Math.PI} />;
@@ -121,13 +152,20 @@ function Hauler({ distanceRef, walkRef }: { distanceRef: React.MutableRefObject<
  */
 export function EarlyRailScene() {
   const distanceRef = useRef(0);
-  const walkRef = useRef(0);
+  const gaitRef = useRef(0);
+  const haulerStrideRef = useRef(0);
+  const horseStrideRef = useRef(0);
   const haulGroupRef = useRef<THREE.Group>(null);
 
   useFrame(() => {
     const local = getSceneLocal(timelineStore.getElapsed()).local;
     distanceRef.current = wagonDistance(local);
-    walkRef.current = haulWalk(local);
+    // Man and horse are both clocked off the load's own motion, off one stride time scaled to each
+    // one's own stride, so they stay in step with each other and with the ground through the pull.
+    const strideTime = haulStrideTime(local);
+    gaitRef.current = haulGait(local);
+    haulerStrideRef.current = strideRadians(strideTime, HAUL_SPEED);
+    horseStrideRef.current = strideRadians(strideTime, HAUL_SPEED, HORSE_STRIDE_LENGTH);
     // Wagon, horse and hauler are one rigid train, moved together down -Z.
     if (haulGroupRef.current) haulGroupRef.current.position.z = WAGON_START_Z - distanceRef.current;
   });
@@ -146,9 +184,9 @@ export function EarlyRailScene() {
 
       <group ref={haulGroupRef}>
         <ChaldronWagon distanceRef={distanceRef} lamp />
-        <Horse distanceRef={distanceRef} walkRef={walkRef} position={[0, 0, -HITCH_AHEAD]} yaw={Math.PI} scale={0.95} harness />
+        <Horse strideRef={horseStrideRef} gaitRef={gaitRef} position={[0, 0, -HITCH_AHEAD]} yaw={Math.PI} scale={0.95} harness />
         <group position={[-1.05, 0, -HITCH_AHEAD - 0.5]}>
-          <Hauler distanceRef={distanceRef} walkRef={walkRef} />
+          <Hauler strideRef={haulerStrideRef} gaitRef={gaitRef} />
         </group>
       </group>
 

@@ -3,16 +3,21 @@ import { useFrame } from "@react-three/fiber";
 import type * as THREE from "three";
 import { timelineStore } from "../../state/timelineStore";
 
-/** Stride length (metres) of a draught horse at a walk — what the gait cycle is measured against. */
-const STRIDE_LENGTH = 1.7;
+/** Stride length (metres) of a draught horse at a walk — what its gait cycle is measured against. */
+export const HORSE_STRIDE_LENGTH = 1.7;
 /** Shoulder height of the reference animal, before `scale`. */
 const WITHERS_Y = 1.55;
 
 interface HorseProps {
-  /** Metres travelled. The gait is driven from distance, not time, so the hooves never skate. */
-  distanceRef?: React.MutableRefObject<number>;
-  /** 0 standing .. 1 walking; blends the leg swing and the head nod in and out. */
-  walkRef?: React.MutableRefObject<number>;
+  /**
+   * Radians of gait cycle covered — see `gait.ts`, and `strideRadians` for turning a mover's stride
+   * time into this. Handed in rather than worked out from a distance here, so the cadence can come up
+   * with the pace as the animal leans into the collar instead of beating at walking speed while the
+   * load is still barely moving.
+   */
+  strideRef?: React.MutableRefObject<number>;
+  /** 0 standing .. 1 full walking pace; scales the leg swing and the head nod along with it. */
+  gaitRef?: React.MutableRefObject<number>;
   position?: [number, number, number];
   yaw?: number;
   scale?: number;
@@ -68,7 +73,7 @@ function Leg({
  * animated from the shared timeline clock, with the gait driven by distance travelled so it stays
  * locked to whatever it is pulling. Built for the pit-head waggonway, where the horse *is* the engine.
  */
-export function Horse({ distanceRef, walkRef, position, yaw = 0, scale = 1, harness = false }: HorseProps) {
+export function Horse({ strideRef, gaitRef, position, yaw = 0, scale = 1, harness = false }: HorseProps) {
   const legs = useRef<(THREE.Group | null)[]>([]);
   const knees = useRef<(THREE.Group | null)[]>([]);
   const neck = useRef<THREE.Group>(null);
@@ -77,9 +82,8 @@ export function Horse({ distanceRef, walkRef, position, yaw = 0, scale = 1, harn
 
   useFrame(() => {
     const t = timelineStore.getElapsed();
-    const distance = distanceRef?.current ?? 0;
-    const walk = walkRef?.current ?? 0;
-    const stride = (distance / STRIDE_LENGTH) * Math.PI * 2;
+    const stride = strideRef?.current ?? 0;
+    const walk = gaitRef?.current ?? 0;
 
     // A walk is a four-beat gait: each leg lands a quarter-cycle after the one before it, in the
     // order near-hind, near-fore, off-hind, off-fore — which is what stops it reading as a pantomime.
@@ -90,11 +94,14 @@ export function Horse({ distanceRef, walkRef, position, yaw = 0, scale = 1, harn
       if (!leg || !knee) continue;
       const p = stride + PHASE[i];
       leg.rotation.x = -Math.sin(p) * 0.42 * walk;
-      knee.rotation.x = Math.max(0, Math.cos(p)) * 0.5 * walk + 0.04;
+      // Smooth across the whole cycle rather than clipped at zero: a `max(0, cos)` knee has a corner
+      // in it twice per step, and four legs doing that is what made this read as a rocking-horse.
+      knee.rotation.x = Math.pow((1 + Math.cos(p)) / 2, 2) * 0.55 * walk + 0.04;
     }
 
     if (body.current) {
-      body.current.position.y = Math.abs(Math.cos(stride)) * 0.03 * walk;
+      // cos² rather than |cos|: same twice-a-stride rise and fall, without the kink at each zero.
+      body.current.position.y = (0.5 + Math.cos(stride * 2) * 0.5) * 0.035 * walk;
       body.current.rotation.z = Math.sin(stride) * 0.015 * walk;
     }
     if (neck.current) {

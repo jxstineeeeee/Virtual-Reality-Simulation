@@ -7,11 +7,11 @@ import { DOOR_STOP_Z } from "../Train/trainDoors";
 import { BENCH_SEAT_OFFSETS, BENCH_SPOTS, BENCH_X, PlatformBench } from "../Environment/PlatformBench";
 import { applyOpacity } from "../../utils/fade";
 import { Person, type NpcActivity, type NpcMotion } from "./Person";
+import { pivotGait, walkLeg, walkSpan } from "./gait";
 import { createRng, makeOutfit, pick, type NpcEra, type Outfit } from "./npcStyle";
 
 /** Top surface of `Platform` (a 0.5m-tall slab centered at x=-4.4, spanning x -5.6..-3.2, z -9..13). */
 const PLATFORM_Y = 0.5;
-const STRIDE_LENGTH = 1.4;
 
 /**
  * Hand-placed standing spots on the platform. Kept clear of the station building (which overlaps the
@@ -51,59 +51,60 @@ function isNear(x: number, z: number, avoid: [number, number][], radius: number)
 }
 
 /** How long a walker stands at each end of its beat before turning back. */
-const WALKER_PAUSE = 2.5;
-/** Seconds of that pause spent actually pivoting, and seconds spent easing in and out of the stride. */
-const TURN_SECONDS = 1.6;
-const GAIT_RAMP = 0.5;
+const WALKER_PAUSE = 2.8;
+/** Seconds of that pause spent actually turning round — feet stepping, not a body being spun. */
+const TURN_SECONDS = 1.9;
 
 function PlatformWalker({ outfit, x, zMin, zMax, speed, offset }: { outfit: Outfit; x: number; zMin: number; zMax: number; speed: number; offset: number }) {
   const groupRef = useRef<THREE.Group>(null);
   const motion = useRef<NpcMotion>({ walk: 0, stride: 0 });
 
+  // One beat of the patrol, worked out once: up the platform, a pause with the turn inside it, back
+  // down, and another pause. Both legs cover the same ground, so a lap is symmetrical.
+  const beat = useMemo(() => {
+    const metres = zMax - zMin;
+    const span = walkSpan(metres, speed);
+    const legStride = walkLeg(span, span, metres).stride;
+    const pivotStride = pivotGait(TURN_SECONDS, TURN_SECONDS, speed).stride;
+    return {
+      metres,
+      span,
+      legStride,
+      pivotStride,
+      cycle: 2 * (span + WALKER_PAUSE),
+      /** Gait the whole lap is worth, so laps stack up without a jump in the legs at the wrap. */
+      lapStride: 2 * (legStride + pivotStride),
+      // The turns sit in the middle of their pauses, so the walker is square to the platform on both
+      // sides of each one rather than still mid-swivel when it sets off again.
+      turnOutAt: span + (WALKER_PAUSE - TURN_SECONDS) / 2,
+      turnBackAt: 2 * span + WALKER_PAUSE + (WALKER_PAUSE - TURN_SECONDS) / 2,
+    };
+  }, [zMin, zMax, speed]);
+
   useFrame(() => {
     const group = groupRef.current;
     if (!group) return;
-    const walkTime = (zMax - zMin) / speed;
-    const cycle = 2 * (walkTime + WALKER_PAUSE);
     const t = timelineStore.getElapsed() + offset;
-    const laps = Math.floor(t / cycle);
-    const u = t - laps * cycle;
+    const laps = Math.floor(t / beat.cycle);
+    const u = t - laps * beat.cycle;
 
-    // Position, heading and gait are all closed-form functions of `u` rather than integrated frame to
-    // frame: identical at any frame rate, and still correct when the timeline is scrubbed or paused.
-    let z: number;
-    // Metres actually covered, which is what the stride is measured in — a walker standing at the end
-    // of its beat stops advancing its gait instead of running on the spot.
-    let travelled: number;
-    if (u < walkTime) {
-      travelled = u * speed;
-      z = zMin + travelled;
-    } else if (u < walkTime + WALKER_PAUSE) {
-      travelled = walkTime * speed;
-      z = zMax;
-    } else if (u < 2 * walkTime + WALKER_PAUSE) {
-      travelled = (walkTime + (u - walkTime - WALKER_PAUSE)) * speed;
-      z = zMax - (u - walkTime - WALKER_PAUSE) * speed;
-    } else {
-      travelled = 2 * walkTime * speed;
-      z = zMin;
-    }
+    // Ground covered, pace and gait cycle all come out of the one model in `gait.ts`, so the walker
+    // leans into its stride and settles out of it again without the feet ever sliding, and the turns
+    // are stepped round rather than pivoted on the spot.
+    const outbound = u < beat.span + WALKER_PAUSE;
+    const leg = walkLeg(outbound ? u : u - beat.span - WALKER_PAUSE, beat.span, beat.metres);
+    const out = pivotGait(u - beat.turnOutAt, TURN_SECONDS, speed);
+    const back = pivotGait(u - beat.turnBackAt, TURN_SECONDS, speed);
 
-    // Eased in and out of each stop instead of lerped toward a target, so the legs settle and pick up
-    // at the same rate however long the frame was.
-    const startRamp = smootherstep(u / GAIT_RAMP);
-    const toStop = smootherstep((walkTime - u) / GAIT_RAMP);
-    const backOff = smootherstep((u - walkTime - WALKER_PAUSE) / GAIT_RAMP);
-    const toEnd = smootherstep((2 * walkTime + WALKER_PAUSE - u) / GAIT_RAMP);
-    motion.current.walk = Math.min(startRamp, toStop) + Math.min(backOff, toEnd);
-    motion.current.stride = ((laps * 2 * walkTime * speed + travelled) / STRIDE_LENGTH) * Math.PI * 2;
+    // Only ever one of the three is moving at a time, so these sums are a selection, not a blend.
+    motion.current.walk = leg.gait + out.gait + back.gait;
+    motion.current.stride =
+      laps * beat.lapStride + (outbound ? leg.stride + out.stride : beat.legStride + beat.pivotStride + leg.stride + back.stride);
 
-    // The turn happens inside the pause and is undone over the second one, so yaw is back at 0 exactly
-    // where the cycle wraps.
-    const turnOut = smootherstep((u - walkTime - (WALKER_PAUSE - TURN_SECONDS) / 2) / TURN_SECONDS);
-    const turnBack = smootherstep((u - 2 * walkTime - WALKER_PAUSE - (WALKER_PAUSE - TURN_SECONDS) / 2) / TURN_SECONDS);
-    group.position.set(x, PLATFORM_Y, z);
-    group.rotation.y = Math.PI * (turnOut - turnBack);
+    group.position.set(x, PLATFORM_Y, outbound ? zMin + leg.distance : zMax - leg.distance);
+    // Turned out over the first pause and back over the second, at exactly the rate the feet are
+    // stepping, so yaw is home again precisely where the cycle wraps.
+    group.rotation.y = Math.PI * (out.turn - back.turn);
   });
 
   return (
@@ -117,10 +118,25 @@ function PlatformWalker({ outfit, x, zMin, zMax, speed, offset }: { outfit: Outf
 const BOARD_LANE_X = -4.3;
 /** Where a boarder steps off the platform into the train doorway and out of shot. */
 const BOARD_EDGE_X = -3.5;
-/** Seconds to come up off the bench, and how far forward standing up carries them. */
-const RISE_SECONDS = 1.2;
-const RISE_STEP = 0.38;
+/** Seconds to come up off the bench, and how much of that the walk overlaps so the two read as one move. */
+const RISE_SECONDS = 1.3;
+const RISE_LEAD = 0.55;
+/**
+ * How far standing up carries the hips forward. Seated, `Person` already has its feet about this far
+ * in front of its hips (`SIT_THIGH` pitches the thighs almost flat), so moving the body forward by the
+ * same amount as the legs straighten leaves the feet planted exactly where they were — and puts the
+ * figure in front of the bench rather than rising up through the seat it was sitting on.
+ */
+const RISE_STEP = 0.42;
 const BOARD_SPEED = 1.1;
+/** Square to the track, which is how they sit and how they stay until they are on their feet. */
+const SEAT_YAW = Math.PI / 2;
+/** Metres of path ahead the heading is averaged over, and how many samples do the averaging. */
+const LOOK_AHEAD = 1.3;
+const LOOK_SAMPLES = 5;
+
+/** Wraps an angle into (-π, π], so a heading is always approached the short way round. */
+const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 interface BenchWaiterProps {
   outfit: Outfit;
@@ -146,7 +162,7 @@ interface BenchWaiterProps {
 function BenchWaiter({ outfit, activity, seatZ, phase, boardAt, doorZ, queueZ, delay }: BenchWaiterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const motion = useRef<NpcMotion>({ walk: 0, stride: 0, sit: 1 });
-  const yaw = useRef(Math.PI / 2);
+  const yaw = useRef(SEAT_YAW);
   /** Last opacity written, so the fade only touches materials on the frames it actually changes. */
   const fade = useRef(1);
 
@@ -186,38 +202,67 @@ function BenchWaiter({ outfit, activity, seatZ, phase, boardAt, doorZ, queueZ, d
     return path[path.length - 1];
   };
 
+  /**
+   * Heading: the average direction of the path over the next `LOOK_AHEAD` metres, rather than the
+   * bearing to a single point ahead. A corner is then turned through over the whole approach to it
+   * instead of over the one frame an aim point crosses it, and it stays a pure function of the
+   * distance walked, so it scrubs with the rest. `null` where the path has run out to aim along.
+   */
+  const headingAt = (d: number): number | null => {
+    const [x0, z0] = at(d);
+    let dx = 0;
+    let dz = 0;
+    for (let k = 1; k <= LOOK_SAMPLES; k++) {
+      const [x1, z1] = at(d + (LOOK_AHEAD * k) / LOOK_SAMPLES);
+      dx += x1 - x0;
+      dz += z1 - z0;
+    }
+    return Math.hypot(dx, dz) < 0.02 ? null : Math.atan2(dx, dz);
+  };
+
+  /** The walk out to the door as one eased leg: off from rest at the bench, slowing into the doorway. */
+  const trip = useMemo(() => {
+    const total = legs[legs.length - 1];
+    const metres = Math.max(total - RISE_STEP, 0.2);
+    return { total, metres, span: walkSpan(metres, BOARD_SPEED) };
+  }, [legs]);
+
   useFrame(() => {
     const group = groupRef.current;
     if (!group) return;
 
     if (boardAt === undefined) {
       group.position.set(BENCH_X, PLATFORM_Y, seatZ);
-      group.rotation.y = Math.PI / 2;
+      group.rotation.y = SEAT_YAW;
       motion.current.sit = 1;
       motion.current.walk = 0;
       return;
     }
 
-    const total = legs[legs.length - 1];
     const t = timelineStore.getElapsed() - (boardAt + delay);
-    const rise = smootherstep(clamp01(t / RISE_SECONDS));
+    const rise = smootherstep(t / RISE_SECONDS);
     motion.current.sit = 1 - rise;
-    // Standing up already carries them a step clear of the bench; the walk picks up from there.
-    const dist = Math.min(RISE_STEP * rise + Math.max(t - RISE_SECONDS, 0) * BOARD_SPEED, total);
-    motion.current.walk = smootherstep(clamp01((t - RISE_SECONDS) / GAIT_RAMP));
-    motion.current.stride = (dist / STRIDE_LENGTH) * Math.PI * 2;
 
+    // Coming up off the bench and walking off are one motion, not two: the walk's own ramp opens
+    // before the rise has finished, so there is never a frame where they are doing neither. The rise
+    // carries the body over its planted feet, and from there it is a single eased walk the whole way
+    // to the door — the first steps are short and slow because the gait is short and slow, not
+    // because the legs have been scaled down under a body already sliding along at full speed.
+    const leg = walkLeg(t - (RISE_SECONDS - RISE_LEAD), trip.span, trip.metres);
+    motion.current.walk = leg.gait;
+    motion.current.stride = leg.stride;
+
+    const dist = RISE_STEP * rise + leg.distance;
     const [x, z] = at(dist);
     group.position.set(x, PLATFORM_Y, z);
-    // Aimed at a point further up the path rather than at the next corner, so the turns round
-    // themselves off instead of snapping the moment a corner is passed.
-    const [ax, az] = at(dist + 0.7);
-    if (Math.hypot(ax - x, az - z) > 0.02) yaw.current = Math.atan2(ax - x, az - z);
-    group.rotation.y = yaw.current;
+    const aim = headingAt(dist);
+    if (aim !== null) yaw.current = aim;
+    // Still sitting they are square to the track; the path's heading only takes over as they rise.
+    group.rotation.y = SEAT_YAW + wrapPi(yaw.current - SEAT_YAW) * rise;
 
     // Through the door: faded out over the last stretch rather than popped away. Only written when it
     // moves, so a waiter who never reaches the door never has transparency forced on their materials.
-    const opacity = 1 - clamp01((dist - (total - 0.8)) / 0.7);
+    const opacity = 1 - clamp01((dist - (trip.total - 0.8)) / 0.7);
     if (opacity !== fade.current) {
       applyOpacity(group, opacity);
       fade.current = opacity;

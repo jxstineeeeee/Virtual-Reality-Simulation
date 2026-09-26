@@ -36,11 +36,15 @@ function thighSwing(p: number): number {
   return -Math.sin(p) * 0.46 - 0.04;
 }
 
-/** Two flexions per cycle: the big one through swing, and a small one absorbing the heel strike. */
+/**
+ * Two flexions per cycle: the big one through swing, and a small one absorbing the heel strike. The
+ * second is a broad give across the whole early stance rather than the narrow spike it was — at a
+ * walking cadence a twelfth power is barely a tenth of a second wide, and the knee popped through it.
+ */
 function kneeFlex(p: number): number {
   const swing = Math.pow((1 + Math.cos(p + 0.35)) / 2, 3);
-  const load = Math.pow((1 + Math.cos(p - 2.2)) / 2, 12);
-  return 0.07 + swing + load * 0.22;
+  const load = Math.pow((1 + Math.cos(p - 2.15)) / 2, 6);
+  return 0.07 + swing + load * 0.2;
 }
 
 /**
@@ -227,11 +231,11 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
     const upright = 1 - sit;
     const holding = carrying && sit < 0.5;
 
+    // The pelvis rises twice per stride (once over each stance leg), shifts across onto whichever
+    // leg is carrying, and rotates with the swinging one — the three things that turn a leg animation
+    // into a walk.
+    const bob = (0.018 + Math.cos(stride * 2) * 0.018) * walk;
     if (hips.current) {
-      // The pelvis rises twice per stride (once over each stance leg), shifts across onto whichever
-      // leg is carrying, and rotates with the swinging one — the three things that turn a leg
-      // animation into a walk.
-      const bob = (0.018 + Math.cos(stride * 2) * 0.018) * walk;
       hips.current.position.y = lerp(HIP_Y - 0.012 * (1 - walk) + bob, SEAT_HIP_Y, sit);
       hips.current.position.x = -Math.cos(stride) * 0.022 * walk * upright;
       const sway = Math.sin(t * 0.33) * 0.02 * (1 - walk) - Math.sin(stride) * 0.03 * walk;
@@ -254,6 +258,10 @@ export function Person({ outfit, pose = "stand", activity = "idle", phase = 0, m
 
     if (spine.current) {
       spine.current.scale.y = 1 + Math.sin(t * 1.7) * 0.008;
+      // A walker's head travels far less than their pelvis: the lumbar spine absorbs a good part of
+      // the bob on the way up. Without that the whole figure pogos, which is the other half of what
+      // reads as a mechanical walk.
+      spine.current.position.y = 0.08 - bob * 0.45;
       if (activity === "shovel" && sit < 0.5) {
         // The whole body does the work, not just the arms: a deep bend into the heap, a twist to throw.
         spine.current.rotation.set(0.46 + Math.sin(t * SHOVEL_RATE) * 0.2, Math.sin(t * SHOVEL_RATE - 0.5) * 0.3, 0);

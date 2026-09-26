@@ -32,17 +32,34 @@ const PITCH_LIMIT_ABS = (80 * Math.PI) / 180;
 //
 //  * The gaze faces the way you are travelling. Nothing else turns it, so a walk that curves toward
 //    a door turns your head the way walking does, and a stationary shot holds dead still.
-//  * Position follows the blocking only when the blocking is actually going somewhere. Scenes shift
-//    the camera around inside a carriage by half a metre at a time to find a nicer angle on a seat;
-//    at rest those reposition as fidgeting. Past `CALM_FOLLOW_ENTER` the camera walks, and it
-//    settles again once it is within `CALM_FOLLOW_EXIT` — a deadband with hysteresis, so it cannot
-//    hunt on the boundary.
+//  * Position follows the blocking, but softly. Scenes shift the camera around inside a carriage by
+//    half a metre at a time to find a nicer angle on a seat; at rest those read as fidgeting. So the
+//    camera chases only the part of the offset that is past `CALM_DEADBAND` at walking pace, and
+//    quietly closes the rest at `CALM_SETTLE_RATE`. A real walk is nearly all past the deadband and
+//    so is followed stride for stride; a half-metre reposition is nearly all inside it and becomes a
+//    drift too slow to feel.
+//
+//    This used to be a hysteresis gate — stand still until the blocking is 1.2m away, then chase it
+//    down to within 0.25m, then stand still again. On a platform walk, where the blocking only pulls
+//    away at a quarter of a metre a second, that plays as seconds of standing rooted followed by a
+//    lunge, over and over. A deadband the camera leaks through has no such edge to trip over: the
+//    follow speed is a continuous function of the offset, so it can neither hunt nor lurch.
 // ---------------------------------------------------------------------------------------------
 
-/** Metres the blocking must want the camera to be away before calm mode gets up and walks. */
-const CALM_FOLLOW_ENTER = 1.2;
-/** ...and how close it has to get before it sits back down. */
-const CALM_FOLLOW_EXIT = 0.25;
+/**
+ * Metres of slack in calm mode's follow. Inside this the camera only creeps, so a hold stays a hold.
+ *
+ * It is also the lag at the back of a walk: the camera trails the blocking by roughly this far while
+ * travelling, and reels it in once the blocking stops.
+ */
+const CALM_DEADBAND = 0.35;
+/**
+ * Fraction of the slack closed per second once the camera is inside the deadband.
+ *
+ * Deliberately slow enough that closing a full deadband's worth stays under `CALM_TURN_SPEED`: a
+ * settle should never register as travel and turn the viewer's head for them.
+ */
+const CALM_SETTLE_RATE = 0.25;
 /** Below this ground speed (m/s) there is no travel direction to face, so the heading holds. */
 const CALM_TURN_SPEED = 0.12;
 /**
@@ -111,7 +128,6 @@ export function CameraDirector() {
   /** Calm mode: the heading the viewer is walking in, and where they were last frame to measure it. */
   const travelYaw = useRef(0);
   const previousPos = useRef<[number, number, number]>([0, 2, 10]);
-  const walking = useRef(false);
   const wasCalm = useRef(false);
 
   useFrame((_, delta) => {
@@ -126,8 +142,6 @@ export function CameraDirector() {
     const justCut = scene.hardCut && lastScene.current !== scene.id;
     const sceneChanged = lastScene.current !== scene.id;
     lastScene.current = scene.id;
-    // A new scene is a new journey; never carry a half-finished walk across the join.
-    if (sceneChanged) walking.current = false;
 
     if (justCut) {
       currentPos.current = pos;
@@ -136,13 +150,14 @@ export function CameraDirector() {
       const damp = 1 - Math.pow(0.0005, delta);
       currentLook.current = lerp3(currentLook.current, look, damp);
       if (calm) {
+        // Travel: chase the offset beyond the deadband at the same pace a cinematic camera follows,
+        // which for a walk is everything but the last `CALM_DEADBAND` of it.
         const gap = distance3(currentPos.current, pos);
-        if (walking.current ? gap > CALM_FOLLOW_EXIT : gap > CALM_FOLLOW_ENTER) {
-          walking.current = true;
-          currentPos.current = lerp3(currentPos.current, pos, damp);
-        } else {
-          walking.current = false;
-        }
+        const chase = Math.max(0, gap - CALM_DEADBAND) / Math.max(gap, 1e-6);
+        if (chase > 0) currentPos.current = lerp3(currentPos.current, pos, damp * chase);
+        // Settle: and creep after the rest, so the blocking's intent — through that door, down onto
+        // that seat — is honoured in the end rather than left a deadband short of it forever.
+        currentPos.current = lerp3(currentPos.current, pos, 1 - Math.pow(1 - CALM_SETTLE_RATE, delta));
       } else {
         currentPos.current = lerp3(currentPos.current, pos, damp);
       }
